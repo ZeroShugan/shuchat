@@ -11,6 +11,9 @@ import { useRoom } from '../../hooks/useRoom';
 import { useUserPresence } from '../../hooks/useUserPresence';
 import { IgnoredUserAlert, MutualRoomsChip, OptionsChip, ServerChip, ShareChip } from './UserChips';
 import { useCloseUserRoomProfile } from '../../state/hooks/userRoomProfile';
+import { useCallStart } from '../../hooks/useCallEmbed';
+import { useCallPreferences } from '../../state/hooks/callPreferences';
+import { getDMRoomFor } from '../../utils/matrix';
 import { PowerChip } from './PowerChip';
 import { UserInviteAlert, UserBanAlert, UserModeration, UserKickAlert } from './UserModeration';
 import { useIgnoredUsers } from '../../hooks/useIgnoredUsers';
@@ -67,6 +70,21 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
     navigate(withSearchParam(getDirectCreatePath(), directSearchParam));
   };
 
+  const startCall = useCallStart(true); // true = DM call
+  const { microphone, video, sound } = useCallPreferences();
+
+  const handleCall = () => {
+    closeUserRoomProfile();
+    const dmRoom = getDMRoomFor(mx, userId);
+    if (dmRoom) {
+      startCall(dmRoom, { microphone, video, sound });
+    } else {
+      // No DM yet — open DM creation, user can call after
+      const directSearchParam: DirectCreateSearchParams = { userId };
+      navigate(withSearchParam(getDirectCreatePath(), directSearchParam));
+    }
+  };
+
   return (
     <Box direction="Column">
       <UserHero
@@ -89,6 +107,16 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
                   onClick={handleMessage}
                 >
                   <Text size="B300">Message</Text>
+                </Button>
+                <Button
+                  size="300"
+                  variant="Success"
+                  fill="Solid"
+                  radii="300"
+                  before={<Icon size="50" src={Icons.Phone} filled />}
+                  onClick={handleCall}
+                >
+                  <Text size="B300">Call</Text>
                 </Button>
               </Box>
             )}
