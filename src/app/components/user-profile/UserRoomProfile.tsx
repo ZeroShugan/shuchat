@@ -23,7 +23,7 @@ import { useRoomCreators } from '../../hooks/useRoomCreators';
 import { useRoomPermissions } from '../../hooks/useRoomPermissions';
 import { useMemberPowerCompare } from '../../hooks/useMemberPowerCompare';
 import { CreatorChip } from './CreatorChip';
-import { getDirectCreatePath, withSearchParam } from '../../pages/pathUtils';
+import { getDirectCreatePath, getDirectRoomPath, withSearchParam } from '../../pages/pathUtils';
 import { DirectCreateSearchParams } from '../../pages/paths';
 
 type UserRoomProfileProps = {
@@ -73,13 +73,27 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
   const startCall = useCallStart(true); // true = DM call
   const { microphone, video, sound } = useCallPreferences();
 
-  const handleCall = () => {
+  const handleCall = async () => {
     closeUserRoomProfile();
     const dmRoom = getDMRoomFor(mx, userId);
     if (dmRoom) {
       startCall(dmRoom, { microphone, video, sound });
+      // Navigate into the DM room so the call embed is visible in context
+      navigate(getDirectRoomPath(dmRoom.roomId));
+      // Send m.call.notify (MSC4075) so other Matrix clients ring
+      try {
+        await mx.sendEvent(dmRoom.roomId, 'm.call.notify' as any, {
+          call_id: '',
+          application: 'm.call',
+          'm.mentions': { user_ids: [userId], room: false },
+          notify_type: 'ring',
+        });
+      } catch (e) {
+        // Non-fatal: best-effort ring notification
+        console.warn('Failed to send call notify:', e);
+      }
     } else {
-      // No DM yet — open DM creation, user can call after
+      // No DM yet — open DM creation screen
       const directSearchParam: DirectCreateSearchParams = { userId };
       navigate(withSearchParam(getDirectCreatePath(), directSearchParam));
     }
