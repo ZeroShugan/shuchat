@@ -175,11 +175,15 @@ export function PasswordLoginForm({ defaultUsername, defaultEmail }: PasswordLog
   const handleGuestLogin = async () => {
     setGuestLoading(true);
     try {
-      const mx = createClient({ baseUrl });
-      const res = await mx.registerGuest({});
-      setFallbackSession(res.access_token!, res.device_id!, res.user_id, baseUrl, true);
+      // Call the ShuChat guest API — creates a real temporary account on the server
+      const res = await fetch('/api/guest-register', { method: 'POST' });
+      if (!res.ok) throw new Error('Guest API error');
+      const data = await res.json();
+      // Use a normal (non-guest) session — avoids push-rule and crypto issues
+      setFallbackSession(data.accessToken, data.deviceId, data.userId, data.homeserver);
       navigate(getHomePath(), { replace: true });
     } catch (e) {
+      console.error('Guest login failed:', e);
       setGuestLoading(false);
     }
   };
