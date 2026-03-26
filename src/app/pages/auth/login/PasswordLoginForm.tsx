@@ -181,7 +181,8 @@ export function PasswordLoginForm({ defaultUsername, defaultEmail }: PasswordLog
       const data = await res.json();
       // Use a normal (non-guest) session — avoids push-rule and crypto issues
       setFallbackSession(data.accessToken, data.deviceId, data.userId, data.homeserver);
-      navigate(getHomePath(), { replace: true });
+      // Land guests directly in the ShuChat main space
+      navigate(getSpacePath('!hAoAUziSmUxaxEkaJj:shugan.dev'), { replace: true });
     } catch (e) {
       console.error('Guest login failed:', e);
       setGuestLoading(false);
