@@ -40,6 +40,8 @@ import { getMatrixToRoom } from '../../plugins/matrix-to';
 import { getCanonicalAliasOrRoomId, isRoomAlias } from '../../utils/matrix';
 import { getViaServers } from '../../plugins/via-servers';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
+import { getMemberDisplayName } from '../../utils/room';
+import { getMxIdLocalPart } from '../../utils/matrix';
 import { useSetting } from '../../state/hooks/settings';
 import { settingsAtom } from '../../state/settings';
 import { useOpenRoomSettings } from '../../state/hooks/roomSettings';
@@ -304,6 +306,7 @@ export function RoomNavItem({
   };
 
   return (
+    <>
     <NavItem
       variant="Background"
       radii="400"
@@ -426,5 +429,26 @@ export function RoomNavItem({
         </NavItemOptions>
       )}
     </NavItem>
+    {room.isCallRoom() && callMembers.length > 0 && (
+      <Box direction="Column" style={{ paddingLeft: '2.5rem', paddingBottom: '0.25rem' }}>
+        {callMembers.slice(0, 6).map((member) => {
+          const memberId = member.sender;
+          if (!memberId) return null;
+          const memberName = getMemberDisplayName(room, memberId) ?? getMxIdLocalPart(memberId) ?? memberId;
+          return (
+            <Box key={member.membershipID} gap="200" alignItems="Center" style={{ paddingTop: '0.15rem', opacity: 0.7 }}>
+              <Icon size="50" src={Icons.User} />
+              <Text size="T200" truncate style={{ fontSize: '0.72rem' }}>{memberName}</Text>
+            </Box>
+          );
+        })}
+        {callMembers.length > 6 && (
+          <Text size="T200" style={{ paddingTop: '0.15rem', opacity: 0.5, paddingLeft: '1.4rem', fontSize: '0.72rem' }}>
+            +{callMembers.length - 6} more
+          </Text>
+        )}
+      </Box>
+    )}
+    </>
   );
 }

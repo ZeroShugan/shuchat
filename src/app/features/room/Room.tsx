@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useRef } from 'react';
 import { Box, Line } from 'folds';
 import { useParams } from 'react-router-dom';
 import { isKeyHotkey } from 'is-hotkey';
@@ -15,6 +15,8 @@ import { markAsRead } from '../../utils/notifications';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useRoomMembers } from '../../hooks/useRoomMembers';
 import { CallView } from '../call/CallView';
+import { CallControls } from '../call/CallControls';
+import { useCallEmbed, useCallJoined, useCallEmbedPlacementSync } from '../../hooks/useCallEmbed';
 import { RoomViewHeader } from './RoomViewHeader';
 import { callChatAtom } from '../../state/callEmbed';
 import { CallChatView } from './CallChatView';
@@ -44,6 +46,11 @@ export function Room() {
   );
 
   const callView = room.isCallRoom();
+  const callEmbed = useCallEmbed();
+  const callJoined = useCallJoined(callEmbed);
+  const dmCallActive = !callView && callEmbed?.roomId === room.roomId;
+  const dmCallContainerRef = useRef<HTMLDivElement>(null);
+  useCallEmbedPlacementSync(dmCallContainerRef);
 
   return (
     <PowerLevelsContextProvider value={powerLevels}>
@@ -59,7 +66,16 @@ export function Room() {
         {!callView && (
           <Box grow="Yes" direction="Column">
             <RoomViewHeader />
-            <Box grow="Yes">
+            {dmCallActive && (
+              <Box
+                direction="Column"
+                style={{ height: '45%', flexShrink: 0, borderBottom: '1px solid var(--mx-surface-bg)' }}
+              >
+                <Box grow="Yes" ref={dmCallContainerRef} />
+                {callEmbed && callJoined && <CallControls callEmbed={callEmbed} />}
+              </Box>
+            )}
+            <Box grow="Yes" style={{ overflow: 'hidden' }}>
               <RoomView eventId={eventId} />
             </Box>
           </Box>

@@ -70,6 +70,7 @@ import { SearchModalRenderer } from '../features/search';
 import { getFallbackSession } from '../state/sessions';
 import { CallStatusRenderer } from './CallStatusRenderer';
 import { CallEmbedProvider } from '../components/CallEmbedProvider';
+import { IncomingCallNotification } from '../components/IncomingCallNotification';
 
 export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize) => {
   const { hashRouter } = clientConfig;
@@ -138,6 +139,7 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
                         </ClientLayout>
                         <CallStatusRenderer />
                         <UserRoomProfileRenderer />
+                        <IncomingCallNotification />
                       </CallEmbedProvider>
                       <SearchModalRenderer />
                       <CreateRoomModalRenderer />

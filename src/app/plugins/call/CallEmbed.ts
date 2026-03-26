@@ -78,6 +78,7 @@ export class CallEmbed {
       skipLobby: 'true',
       confineToRoom: 'true',
       appPrompt: 'false',
+      videoMuted: 'true',
       perParticipantE2EE: room.hasEncryptionStateEvent().toString(),
       lang: 'en-EN',
       theme: themeKind,
