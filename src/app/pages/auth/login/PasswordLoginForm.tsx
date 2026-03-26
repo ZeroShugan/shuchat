@@ -177,7 +177,7 @@ export function PasswordLoginForm({ defaultUsername, defaultEmail }: PasswordLog
     try {
       const mx = createClient({ baseUrl });
       const res = await mx.registerGuest({});
-      setFallbackSession(res.access_token!, res.device_id!, res.user_id, baseUrl);
+      setFallbackSession(res.access_token!, res.device_id!, res.user_id, baseUrl, true);
       navigate(getHomePath(), { replace: true });
     } catch (e) {
       setGuestLoading(false);

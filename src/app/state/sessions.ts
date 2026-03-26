@@ -13,6 +13,7 @@ export type Session = {
   expiresInMs?: number;
   refreshToken?: string;
   fallbackSdkStores?: boolean;
+  isGuest?: boolean;
 };
 
 export type Sessions = Session[];
@@ -33,18 +34,22 @@ export function setFallbackSession(
   accessToken: string,
   deviceId: string,
   userId: string,
-  baseUrl: string
+  baseUrl: string,
+  isGuest = false
 ) {
   localStorage.setItem('cinny_access_token', accessToken);
   localStorage.setItem('cinny_device_id', deviceId);
   localStorage.setItem('cinny_user_id', userId);
   localStorage.setItem('cinny_hs_base_url', baseUrl);
+  if (isGuest) localStorage.setItem('cinny_is_guest', '1');
+  else localStorage.removeItem('cinny_is_guest');
 }
 export const removeFallbackSession = () => {
   localStorage.removeItem('cinny_hs_base_url');
   localStorage.removeItem('cinny_user_id');
   localStorage.removeItem('cinny_device_id');
   localStorage.removeItem('cinny_access_token');
+  localStorage.removeItem('cinny_is_guest');
 };
 export const getFallbackSession = (): Session | undefined => {
   const baseUrl = localStorage.getItem('cinny_hs_base_url');
@@ -53,12 +58,14 @@ export const getFallbackSession = (): Session | undefined => {
   const accessToken = localStorage.getItem('cinny_access_token');
 
   if (baseUrl && userId && deviceId && accessToken) {
+    const isGuest = localStorage.getItem('cinny_is_guest') === '1';
     const session: Session = {
       baseUrl,
       userId,
       deviceId,
       accessToken,
       fallbackSdkStores: true,
+      isGuest,
     };
 
     return session;

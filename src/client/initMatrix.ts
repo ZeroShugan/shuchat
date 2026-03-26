@@ -9,6 +9,7 @@ type Session = {
   accessToken: string;
   userId: string;
   deviceId: string;
+  isGuest?: boolean;
 };
 
 export const initClient = async (session: Session): Promise<MatrixClient> => {
@@ -28,12 +29,19 @@ export const initClient = async (session: Session): Promise<MatrixClient> => {
     cryptoStore: legacyCryptoStore,
     deviceId: session.deviceId,
     timelineSupport: true,
-    cryptoCallbacks: cryptoCallbacks as any,
-    verificationMethods: ['m.sas.v1'],
+    // isGuest skips push rules, presence, and other auth-only endpoints
+    isGuest: session.isGuest ?? false,
+    ...(session.isGuest ? {} : {
+      cryptoCallbacks: cryptoCallbacks as any,
+      verificationMethods: ['m.sas.v1'],
+    }),
   });
 
   await indexedDBStore.startup();
-  await mx.initRustCrypto();
+  // Guests cannot use E2E encryption — skip Rust crypto init
+  if (!session.isGuest) {
+    await mx.initRustCrypto();
+  }
 
   mx.setMaxListeners(50);
 
