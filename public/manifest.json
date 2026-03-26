@@ -1,6 +1,6 @@
 {
-  "name": "Cinny",
-  "short_name": "Cinny",
+  "name": "ShuChat",
+  "short_name": "ShuChat",
   "description": "Yet another matrix client",
   "dir": "auto",
   "lang": "en-US",
