@@ -59,7 +59,7 @@ function AlreadyInCallMessage() {
   );
 }
 
-function CallPrescreen() {
+export function CallPrescreen() {
   const mx = useMatrixClient();
   const room = useRoom();
   const livekitSupported = useLivekitSupport();

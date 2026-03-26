@@ -14,9 +14,10 @@ import { useKeyDown } from '../../hooks/useKeyDown';
 import { markAsRead } from '../../utils/notifications';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useRoomMembers } from '../../hooks/useRoomMembers';
-import { CallView } from '../call/CallView';
+import { CallView, CallPrescreen } from '../call/CallView';
 import { CallControls } from '../call/CallControls';
 import { useCallEmbed, useCallJoined, useCallEmbedPlacementSync } from '../../hooks/useCallEmbed';
+import { useCallSession, useCallMembers } from '../../hooks/useCall';
 import { RoomViewHeader } from './RoomViewHeader';
 import { callChatAtom } from '../../state/callEmbed';
 import { CallChatView } from './CallChatView';
@@ -46,15 +47,28 @@ export function Room() {
   );
 
   const callView = room.isCallRoom();
+
+  // Track active call session in this room (works for both call rooms and DM rooms)
+  const callSession = useCallSession(room);
+  const callMembers = useCallMembers(room, callSession);
+  const hasActiveCall = callMembers.length > 0;
+
+  // Track whether the current user has joined the call in this room
   const callEmbed = useCallEmbed();
   const callJoined = useCallJoined(callEmbed);
-  const dmCallActive = !callView && callEmbed?.roomId === room.roomId;
+  const myCallActive = callEmbed?.roomId === room.roomId;
+
+  // DM call area: show when current user is in call, OR when others are (prescreen for receiver)
+  const showDMCallArea = !callView && (myCallActive || hasActiveCall);
+
+  // Ref for syncing the floating call embed position when user is in the call
   const dmCallContainerRef = useRef<HTMLDivElement>(null);
   useCallEmbedPlacementSync(dmCallContainerRef);
 
   return (
     <PowerLevelsContextProvider value={powerLevels}>
       <Box grow="Yes">
+        {/* Voice/call rooms: full CallView */}
         {callView && (screenSize === ScreenSize.Desktop || !chat) && (
           <Box grow="Yes" direction="Column">
             <RoomViewHeader callView />
@@ -63,18 +77,36 @@ export function Room() {
             </Box>
           </Box>
         )}
+
+        {/* Chat rooms (including DMs) */}
         {!callView && (
           <Box grow="Yes" direction="Column">
             <RoomViewHeader />
-            {dmCallActive && (
+
+            {/* DM call area: top half when a call is active */}
+            {showDMCallArea && (
               <Box
                 direction="Column"
-                style={{ height: '45%', flexShrink: 0, borderBottom: '1px solid var(--mx-surface-bg)' }}
+                style={{
+                  height: '45%',
+                  flexShrink: 0,
+                  borderBottom: '2px solid rgba(255,255,255,0.06)',
+                }}
               >
-                <Box grow="Yes" ref={dmCallContainerRef} />
-                {callEmbed && callJoined && <CallControls callEmbed={callEmbed} />}
+                {myCallActive ? (
+                  // This user is in the call — show the call embed + controls
+                  <>
+                    <Box grow="Yes" ref={dmCallContainerRef} />
+                    {callEmbed && callJoined && <CallControls callEmbed={callEmbed} />}
+                  </>
+                ) : (
+                  // Someone else started a call — show prescreen so this user can join
+                  <CallPrescreen />
+                )}
               </Box>
             )}
+
+            {/* Chat always visible below the call area */}
             <Box grow="Yes" style={{ overflow: 'hidden' }}>
               <RoomView eventId={eventId} />
             </Box>

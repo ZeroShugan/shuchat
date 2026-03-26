@@ -3,8 +3,6 @@ import { Avatar, Box, Button, Icon, Icons, Text } from 'folds';
 import { MatrixEvent, RoomEvent } from 'matrix-js-sdk';
 import InviteSound from '../../../public/sound/invite.ogg';
 import { useMatrixClient } from '../hooks/useMatrixClient';
-import { useCallStart } from '../hooks/useCallEmbed';
-import { useCallPreferences } from '../state/hooks/callPreferences';
 import { getMxIdLocalPart, mxcUrlToHttp } from '../utils/matrix';
 import { getDirectRoomPath } from '../pages/pathUtils';
 import { useNavigate } from 'react-router-dom';
@@ -24,8 +22,6 @@ export function IncomingCallNotification() {
   const useAuthentication = useMediaAuthentication();
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const startCall = useCallStart(true);
-  const { microphone, video, sound } = useCallPreferences();
 
   const stopRing = useCallback(() => {
     const el = audioRef.current;
@@ -37,24 +33,23 @@ export function IncomingCallNotification() {
     setIncoming(null);
   }, [stopRing]);
 
+  // Answer: navigate to the DM room.
+  // Room.tsx will detect the active call via Matrix RTC state events and show
+  // CallPrescreen with a "Join" button — this ensures the receiver joins the
+  // *existing* session (JoinExistingDM intent) rather than starting a new call.
   const answer = useCallback(() => {
     if (!incoming) return;
     stopRing();
     setIncoming(null);
-    const dmRoom = mx.getRoom(incoming.roomId);
-    if (dmRoom) {
-      startCall(dmRoom, { microphone, video: false, sound });
-      navigate(getDirectRoomPath(incoming.roomId));
-    }
-  }, [incoming, mx, startCall, microphone, video, sound, navigate, stopRing]);
+    navigate(getDirectRoomPath(incoming.roomId));
+  }, [incoming, navigate, stopRing]);
 
   useEffect(() => {
     const myUserId = mx.getSafeUserId();
 
-    const handleEvent = (_event: MatrixEvent, room: any) => {
-      const event = _event;
+    const handleEvent = (event: MatrixEvent) => {
       if (event.getType() !== 'm.call.notify') return;
-      if (event.getSender() === myUserId) return;
+      if (event.getSender() === myUserId) return; // ignore own events
 
       const content = event.getContent();
       if (content.notify_type !== 'ring') return;
@@ -86,6 +81,7 @@ export function IncomingCallNotification() {
     };
   }, [mx, useAuthentication, stopRing]);
 
+  // Auto-dismiss after 30 seconds
   useEffect(() => {
     if (!incoming) return;
     const timeout = setTimeout(dismiss, 30000);
@@ -108,9 +104,9 @@ export function IncomingCallNotification() {
             zIndex: 9999,
             width: '22rem',
             background: 'var(--mx-surface-bg, #1e1f22)',
-            border: '1px solid rgba(255,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: '0.75rem',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
             padding: '1rem',
           }}
           direction="Column"
