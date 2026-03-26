@@ -18,8 +18,8 @@ import {
   config,
 } from 'folds';
 import FocusTrap from 'focus-trap-react';
-import { Link } from 'react-router-dom';
-import { MatrixError } from 'matrix-js-sdk';
+import { Link, useNavigate } from 'react-router-dom';
+import { MatrixError, createClient } from 'matrix-js-sdk';
 import { getMxIdLocalPart, getMxIdServer, isUserId } from '../../../utils/matrix';
 import { EMAIL_REGEX } from '../../../utils/regex';
 import { useAutoDiscoveryInfo } from '../../../hooks/useAutoDiscoveryInfo';
@@ -35,7 +35,8 @@ import {
 } from './loginUtil';
 import { PasswordInput } from '../../../components/password-input';
 import { FieldError } from '../FiledError';
-import { getResetPasswordPath } from '../../pathUtils';
+import { getResetPasswordPath, getHomePath } from '../../pathUtils';
+import { setFallbackSession } from '../../../state/sessions';
 import { stopPropagation } from '../../../utils/keyboard';
 
 function UsernameHint({ server }: { server: string }) {
@@ -167,6 +168,21 @@ export function PasswordLoginForm({ defaultUsername, defaultEmail }: PasswordLog
     });
   };
 
+
+  const navigate = useNavigate();
+  const [guestLoading, setGuestLoading] = useState(false);
+
+  const handleGuestLogin = async () => {
+    setGuestLoading(true);
+    try {
+      const mx = createClient({ baseUrl });
+      const res = await mx.registerGuest({});
+      setFallbackSession(res.access_token!, res.device_id!, res.user_id, baseUrl);
+      navigate(getHomePath(), { replace: true });
+    } catch (e) {
+      setGuestLoading(false);
+    }
+  };
   const handleSubmit: FormEventHandler<HTMLFormElement> = (evt) => {
     evt.preventDefault();
     const { usernameInput, passwordInput } = evt.target as HTMLFormElement & {
@@ -260,6 +276,23 @@ export function PasswordLoginForm({ defaultUsername, defaultEmail }: PasswordLog
           Login
         </Text>
       </Button>
+
+
+      <Box direction="Column" gap="200" alignItems="Center">
+        <Text size="T300" priority="300">— or —</Text>
+        <Button
+          type="button"
+          variant="Secondary"
+          size="500"
+          style={{ width: '100%' }}
+          onClick={handleGuestLogin}
+          disabled={guestLoading}
+        >
+          {guestLoading ? <Spinner size="200" variant="Secondary" /> : (
+            <Text as="span" size="B500">Continue as Guest</Text>
+          )}
+        </Button>
+      </Box>
 
       <Overlay
         open={
