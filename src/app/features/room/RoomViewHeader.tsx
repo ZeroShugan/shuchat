@@ -46,6 +46,9 @@ import { roomToUnreadAtom } from '../../state/room/roomToUnread';
 import { copyToClipboard } from '../../utils/dom';
 import { LeaveRoomPrompt } from '../../components/leave-room-prompt';
 import { useRoomAvatar, useRoomName, useRoomTopic } from '../../hooks/useRoomMeta';
+import { useCallStart, useCallEmbed } from '../../hooks/useCallEmbed';
+import { useCallSession, useCallMembers } from '../../hooks/useCall';
+import { useCallPreferences } from '../../state/hooks/callPreferences';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
 import { stopPropagation } from '../../utils/keyboard';
 import { getMatrixToRoom } from '../../plugins/matrix-to';
@@ -64,6 +67,9 @@ import {
 import { JumpToTime } from './jump-to-time';
 import { useRoomNavigate } from '../../hooks/useRoomNavigate';
 import { useRoomCreators } from '../../hooks/useRoomCreators';
+import { useCrossSigningActive } from '../../hooks/useCrossSigning';
+import { useOpenUserRoomProfile } from '../../state/hooks/userRoomProfile';
+import { useUserVerificationStatus } from '../../hooks/useUserVerificationStatus';
 import { useRoomPermissions } from '../../hooks/useRoomPermissions';
 import { InviteUserPrompt } from '../../components/invite-user-prompt';
 import { ContainerColor } from '../../styles/ContainerColor.css';
@@ -263,6 +269,31 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
   const [menuAnchor, setMenuAnchor] = useState<RectCords>();
   const [pinMenuAnchor, setPinMenuAnchor] = useState<RectCords>();
   const direct = useIsDirectRoom();
+  const myUserId = mx.getSafeUserId();
+  const dmUserId = direct
+    ? room.getJoinedMembers().find((m) => m.userId !== myUserId)?.userId
+    : undefined;
+  const dmVerifStatus = useUserVerificationStatus(dmUserId);
+  const callEmbed = useCallEmbed();
+  const callSession = useCallSession(room);
+  const callMembers = useCallMembers(room, callSession);
+  const myCallActive = callEmbed?.roomId === room.roomId;
+  const hasActiveCall = callMembers.length > 0;
+  const startCall = useCallStart(true);
+  const { microphone, video, sound: callSound } = useCallPreferences();
+  const callPref = { microphone, video, sound: callSound };
+  const handleDMCall = () => {
+    if (!direct || myCallActive) return;
+    startCall(room, callPref);
+  };
+
+  const crossSigningActive = useCrossSigningActive();
+  const openUserProfile = useOpenUserRoomProfile();
+
+  const handleShieldClick = React.useCallback((evt: React.MouseEvent<HTMLButtonElement>) => {
+    if (!dmUserId) return;
+    openUserProfile(room.roomId, undefined, dmUserId, evt.currentTarget.getBoundingClientRect(), 'Right');
+  }, [room.roomId, dmUserId, openUserProfile]);
 
   const pinnedEvents = useRoomPinnedEvents(room);
   const encryptionEvent = useStateEvent(room, StateEvent.RoomEncryption);
@@ -305,7 +336,8 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
   };
 
   return (
-    <PageHeader
+    <>
+      <PageHeader
       className={ContainerColor({ variant: 'Surface' })}
       balance={screenSize === ScreenSize.Mobile}
     >
@@ -335,9 +367,16 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
             </Avatar>
           )}
           <Box direction="Column">
-            <Text size={topic ? 'H5' : 'H3'} truncate>
-              {name}
-            </Text>
+            <Box alignItems="Center" gap="200">
+              <Text size={topic ? 'H5' : 'H3'} truncate>
+                {name}
+              </Text>
+              {direct && dmVerifStatus?.isVerified() && (
+                <span title="Verified user" style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                  <Icon src={Icons.ShieldUser} size="200" style={{ color: '#3ba55d' }} />
+                </span>
+              )}
+            </Box>
             {topic && (
               <UseStateProvider initial={false}>
                 {(viewTopic, setViewTopic) => (
@@ -379,6 +418,67 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
         </Box>
 
         <Box shrink="No">
+          {direct && !callEmbed?.roomId && !hasActiveCall && (
+            <TooltipProvider
+              position="Bottom"
+              offset={4}
+              tooltip={<Tooltip><Text>Start Voice Call</Text></Tooltip>}
+            >
+              {(triggerRef) => (
+                <IconButton fill="None" ref={triggerRef} onClick={handleDMCall}>
+                  <Icon size="400" src={Icons.Phone} />
+                </IconButton>
+              )}
+            </TooltipProvider>
+          )}
+          {direct && (myCallActive || hasActiveCall) && (
+            <TooltipProvider
+              position="Bottom"
+              offset={4}
+              tooltip={<Tooltip><Text>{myCallActive ? 'In Call' : 'Join Call'}</Text></Tooltip>}
+            >
+              {(triggerRef) => (
+                <IconButton
+                  fill="None"
+                  ref={triggerRef}
+                  onClick={myCallActive ? undefined : handleDMCall}
+                  style={{ color: '#3ba55d' }}
+                >
+                  <Icon size="400" src={Icons.Phone} filled />
+                </IconButton>
+              )}
+            </TooltipProvider>
+          )}
+          {direct && dmUserId && crossSigningActive && (
+            <TooltipProvider
+              position="Bottom"
+              offset={4}
+              tooltip={
+                <Tooltip>
+                  <Text>
+                    {dmVerifStatus?.isVerified() ? 'Verified' : 'Verify User'}
+                  </Text>
+                </Tooltip>
+              }
+            >
+              {(triggerRef) => (
+                <IconButton
+                  fill="None"
+                  ref={triggerRef}
+                  onClick={handleShieldClick}
+                  style={{
+                    color: dmVerifStatus?.isVerified()
+                      ? '#3ba55d'
+                      : dmVerifStatus !== undefined
+                      ? '#f0a500'
+                      : undefined,
+                  }}
+                >
+                  <Icon size="400" src={Icons.ShieldUser} />
+                </IconButton>
+              )}
+            </TooltipProvider>
+          )}
           {!encryptedRoom && (
             <TooltipProvider
               position="Bottom"
@@ -520,5 +620,6 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
         </Box>
       </Box>
     </PageHeader>
+    </>
   );
 }

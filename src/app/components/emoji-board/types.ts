@@ -1,4 +1,5 @@
 export enum EmojiBoardTab {
+  GIF = 'GIF',
   Emoji = 'Emoji',
   Sticker = 'Sticker',
 }

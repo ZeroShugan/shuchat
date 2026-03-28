@@ -8,6 +8,7 @@ import React, {
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from 'react';
 import { Box, config, Icons, Scroll } from 'folds';
 import FocusTrap from 'focus-trap-react';
@@ -51,6 +52,7 @@ import {
   EmojiBoardLayout,
 } from './components';
 import { EmojiBoardTab, EmojiType } from './types';
+import { GifContent } from '../gif-board';
 import { VirtualTile } from '../virtualizer';
 
 const RECENT_GROUP_ID = 'recent_group';
@@ -360,6 +362,7 @@ type EmojiBoardProps = {
   onEmojiSelect?: (unicode: string, shortcode: string) => void;
   onCustomEmojiSelect?: (mxc: string, shortcode: string) => void;
   onStickerSelect?: (mxc: string, shortcode: string, label: string) => void;
+  onGifSelect?: (url: string, title: string, w: number, h: number) => void;
   allowTextCustomEmoji?: boolean;
   addToRecentEmoji?: boolean;
 };
@@ -373,6 +376,7 @@ export function EmojiBoard({
   onEmojiSelect,
   onCustomEmojiSelect,
   onStickerSelect,
+  onGifSelect,
   allowTextCustomEmoji,
   addToRecentEmoji = true,
 }: EmojiBoardProps) {
@@ -486,6 +490,56 @@ export function EmojiBoard({
       virtualizer.scrollToIndex(0, { align: 'start' });
     }
   }, [tab, virtualizer, groups]);
+
+  // ── GIF search state (must be before early return for hooks rules) ───────────
+  const [gifSearchQuery, setGifSearchQuery] = useState('');
+  const handleGifSearchChange: ChangeEventHandler<HTMLInputElement> = useDebounce(
+    useCallback((evt: React.ChangeEvent<HTMLInputElement>) => {
+      setGifSearchQuery(evt.target.value);
+    }, []),
+    { wait: 400 }
+  );
+
+  // ── GIF tab: render GifContent inside same board layout ────────────────────
+  if (tab === EmojiBoardTab.GIF) {
+    return (
+      <FocusTrap
+        focusTrapOptions={{
+          returnFocusOnDeactivate,
+          initialFocus: false,
+          onDeactivate: requestClose,
+          clickOutsideDeactivates: true,
+          allowOutsideClick: true,
+          isKeyForward: (evt: KeyboardEvent) =>
+            !editableActiveElement() && isKeyHotkey(['arrowdown', 'arrowright'], evt),
+          isKeyBackward: (evt: KeyboardEvent) =>
+            !editableActiveElement() && isKeyHotkey(['arrowup', 'arrowleft'], evt),
+          escapeDeactivates: stopPropagation,
+        }}
+      >
+        <EmojiBoardLayout
+          header={
+            <Box direction="Column" gap="200">
+              {onTabChange && <EmojiBoardTabs tab={tab} onTabChange={onTabChange} />}
+              <SearchInput
+                key="gif"
+                onChange={handleGifSearchChange}
+              />
+            </Box>
+          }
+        >
+          <Box grow="Yes" direction="Column" style={{ minHeight: 0 }}>
+            <GifContent
+              requestClose={requestClose}
+              returnFocusOnDeactivate={returnFocusOnDeactivate}
+              onGifSelect={onGifSelect ?? (() => {})}
+              searchQuery={gifSearchQuery}
+            />
+          </Box>
+        </EmojiBoardLayout>
+      </FocusTrap>
+    );
+  }
 
   return (
     <FocusTrap

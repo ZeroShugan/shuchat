@@ -446,6 +446,18 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
       });
     };
 
+    const handleGifSelect = useCallback(
+      (url: string, title: string, w: number, h: number) => {
+        mx.sendMessage(roomId, {
+          msgtype: MsgType.Image,
+          url,
+          body: title || 'GIF',
+          info: { mimetype: 'image/gif', w, h },
+        } as any);
+      },
+      [mx, roomId]
+    );
+
     return (
       <div ref={ref}>
         {selectedFiles.length > 0 && (
@@ -623,6 +635,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
                         onEmojiSelect={handleEmoticonSelect}
                         onCustomEmojiSelect={handleEmoticonSelect}
                         onStickerSelect={handleStickerSelect}
+                        onGifSelect={handleGifSelect}
                         requestClose={() => {
                           setEmojiBoardTab((t) => {
                             if (t) {
@@ -649,6 +662,25 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
                         />
                       </IconButton>
                     )}
+                    <IconButton
+                      aria-pressed={emojiBoardTab === EmojiBoardTab.GIF}
+                      onClick={() => setEmojiBoardTab(EmojiBoardTab.GIF)}
+                      variant="SurfaceVariant"
+                      size="300"
+                      radii="300"
+                      title="GIF"
+                    >
+                      <Text
+                        size="T200"
+                        style={{
+                          fontWeight: 700,
+                          lineHeight: 1,
+                          opacity: emojiBoardTab === EmojiBoardTab.GIF ? 1 : 0.7,
+                        }}
+                      >
+                        GIF
+                      </Text>
+                    </IconButton>
                     <IconButton
                       ref={emojiBtnRef}
                       aria-pressed={

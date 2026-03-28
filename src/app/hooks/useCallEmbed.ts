@@ -1,6 +1,6 @@
-import { createContext, RefObject, useCallback, useContext, useEffect, useState } from 'react';
+import { createContext, RefObject, useCallback, useContext, useEffect, useLayoutEffect, useState } from 'react';
 import { MatrixRTCSession } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
-import { MatrixClient, Room } from 'matrix-js-sdk';
+import { MatrixClient, Room, KnownMembership } from 'matrix-js-sdk';
 import { useSetAtom } from 'jotai';
 import {
   CallEmbed,
@@ -72,6 +72,30 @@ export const useCallStart = (dm = false) => {
       const callEmbed = createCallEmbed(mx, room, dm, theme.kind, container, pref);
 
       setCallEmbed(callEmbed);
+
+      // For DM calls, send m.call.notify (MSC4075) so the other party rings.
+      if (dm) {
+        const myUserId = mx.getSafeUserId();
+        const otherMembers = room
+          .getMembers()
+          .filter(
+            (m) =>
+              m.userId !== myUserId &&
+              m.membership === KnownMembership.Join
+          )
+          .map((m) => m.userId);
+
+        if (otherMembers.length > 0) {
+          mx.sendEvent(room.roomId, 'm.call.notify' as any, {
+            call_id: '',
+            application: 'm.call',
+            'm.mentions': { user_ids: otherMembers, room: false },
+            notify_type: 'ring',
+          }).catch((e: unknown) => {
+            console.warn('Failed to send call notify:', e);
+          });
+        }
+      }
     },
     [mx, dm, theme, setCallEmbed, callEmbedRef]
   );
@@ -117,7 +141,9 @@ export const useCallThemeSync = (embed: CallEmbed) => {
   useEffect(() => {
     const name: ElementCallThemeKind = theme.kind === ThemeKind.Dark ? 'dark' : 'light';
 
-    embed.setTheme(name);
+    embed.setTheme(name).catch(() => {
+      // Element Call may not respond to theme changes - ignore timeout
+    });
   }, [theme.kind, embed]);
 };
 
@@ -128,15 +154,28 @@ export const useCallEmbedPlacementSync = (containerViewRef: RefObject<HTMLDivEle
     const embedEl = callEmbedRef.current;
     const container = containerViewRef.current;
     if (!embedEl || !container) return;
-
-    embedEl.style.top = `${container.offsetTop}px`;
-    embedEl.style.left = `${container.offsetLeft}px`;
-    embedEl.style.width = `${container.clientWidth}px`;
-    embedEl.style.height = `${container.clientHeight}px`;
+    const rect = container.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) return;
+    embedEl.style.top = `${rect.top}px`;
+    embedEl.style.left = `${rect.left}px`;
+    embedEl.style.width = `${rect.width}px`;
+    embedEl.style.height = `${rect.height}px`;
   }, [callEmbedRef, containerViewRef]);
 
+  // Sync immediately on every render (catches container appearing/changing)
+  useLayoutEffect(() => {
+    syncCallEmbedPlacement();
+  });
+
+  // Sync on container resize
   useResizeObserver(
     syncCallEmbedPlacement,
     useCallback(() => containerViewRef.current, [containerViewRef])
   );
+
+  // Sync on window resize (for sidebar toggles etc)
+  useEffect(() => {
+    window.addEventListener('resize', syncCallEmbedPlacement);
+    return () => window.removeEventListener('resize', syncCallEmbedPlacement);
+  }, [syncCallEmbedPlacement]);
 };

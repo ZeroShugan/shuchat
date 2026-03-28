@@ -31,9 +31,7 @@ export function SyncStatus({ mx }: SyncStatusProps) {
   );
 
   if (
-    (stateData.current === SyncState.Prepared ||
-      stateData.current === SyncState.Syncing ||
-      stateData.current === SyncState.Catchup) &&
+    stateData.current === SyncState.Prepared &&
     stateData.previous !== SyncState.Syncing
   ) {
     return (

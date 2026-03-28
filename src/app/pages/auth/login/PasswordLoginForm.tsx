@@ -35,7 +35,7 @@ import {
 } from './loginUtil';
 import { PasswordInput } from '../../../components/password-input';
 import { FieldError } from '../FiledError';
-import { getResetPasswordPath, getHomePath } from '../../pathUtils';
+import { getResetPasswordPath, getHomePath, getSpacePath } from '../../pathUtils';
 import { setFallbackSession } from '../../../state/sessions';
 import { stopPropagation } from '../../../utils/keyboard';
 
@@ -171,12 +171,17 @@ export function PasswordLoginForm({ defaultUsername, defaultEmail }: PasswordLog
 
   const navigate = useNavigate();
   const [guestLoading, setGuestLoading] = useState(false);
+  const [guestNickname, setGuestNickname] = useState('');
 
   const handleGuestLogin = async () => {
     setGuestLoading(true);
     try {
       // Call the ShuChat guest API — creates a real temporary account on the server
-      const res = await fetch('/api/guest-register', { method: 'POST' });
+      const res = await fetch('/api/guest-register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nickname: guestNickname.trim() }),
+      });
       if (!res.ok) throw new Error('Guest API error');
       const data = await res.json();
       // Use a normal (non-guest) session — avoids push-rule and crypto issues
@@ -285,6 +290,25 @@ export function PasswordLoginForm({ defaultUsername, defaultEmail }: PasswordLog
 
       <Box direction="Column" gap="200" alignItems="Center">
         <Text size="T300" priority="300">— or —</Text>
+        <Box direction="Column" gap="100" style={{ width: '100%' }}>
+          <Text as="label" size="L400" priority="300">
+            Nickname{' '}
+            <Text as="span" size="T200" priority="300">(optional)</Text>
+          </Text>
+          <Input
+            value={guestNickname}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setGuestNickname(e.target.value)}
+            placeholder="How should we call you?"
+            variant="Background"
+            size="400"
+            outlined
+            maxLength={24}
+            disabled={guestLoading}
+          />
+          <Text size="T200" priority="300">
+            A <b>(guest)</b> suffix will be added to your name.
+          </Text>
+        </Box>
         <Button
           type="button"
           variant="Secondary"

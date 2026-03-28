@@ -22,4 +22,7 @@ export enum ElementWidgetActions {
   HangupCall = 'im.vector.hangup',
   Close = 'io.element.close',
   DeviceMute = 'io.element.device_mute',
+  AlwaysOnScreen = 'set_always_on_screen',
+  TileLayout = 'io.element.tile_layout',
+  SpotlightLayout = 'io.element.spotlight_layout',
 }

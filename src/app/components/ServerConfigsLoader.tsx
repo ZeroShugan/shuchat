@@ -34,7 +34,8 @@ export function ServerConfigsLoader({ children }: ServerConfigsLoaderProps) {
       try {
         validatedAuthMetadata = validateAuthMetadata(authMetadata);
       } catch (e) {
-        console.error(e);
+        // OIDC not configured on this server - expected, not an error
+        console.debug("OIDC metadata not available:", e instanceof Error ? e.message : e);
       }
 
       return {

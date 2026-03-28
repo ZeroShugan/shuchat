@@ -54,10 +54,10 @@ export function CallEmbedProvider({ children }: CallEmbedProviderProps) {
         style={{
           visibility: callVisible ? undefined : 'hidden',
           position: 'fixed',
-          top: 0,
-          left: 0,
-          width: '100%',
-          height: '50%',
+          top: '-9999px',
+          left: '-9999px',
+          width: '1px',
+          height: '1px',
         }}
         ref={callEmbedRef}
       />

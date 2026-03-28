@@ -87,6 +87,11 @@ export const ImageContent = as<'div', ImageContentProps>(
 
     const [srcState, loadSrc] = useAsyncCallback(
       useCallback(async () => {
+        // External URLs (e.g. Giphy GIFs) — pass through directly
+        if (!url.startsWith('mxc://')) {
+          if (encInfo) throw new Error('Cannot decrypt external media');
+          return url;
+        }
         const mediaUrl = mxcUrlToHttp(mx, url, useAuthentication);
         if (!mediaUrl) throw new Error('Invalid media URL');
         if (encInfo) {

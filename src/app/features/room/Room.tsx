@@ -15,6 +15,7 @@ import { markAsRead } from '../../utils/notifications';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useRoomMembers } from '../../hooks/useRoomMembers';
 import { CallView, CallPrescreen } from '../call/CallView';
+import { CallingScreen } from '../call/CallingScreen';
 import { CallControls } from '../call/CallControls';
 import { useCallEmbed, useCallJoined, useCallEmbedPlacementSync } from '../../hooks/useCallEmbed';
 import { useCallSession, useCallMembers } from '../../hooks/useCall';
@@ -91,16 +92,23 @@ export function Room() {
                   height: '45%',
                   flexShrink: 0,
                   borderBottom: '2px solid rgba(255,255,255,0.06)',
+                  overflow: 'hidden',
                 }}
               >
-                {myCallActive ? (
-                  // This user is in the call — show the call embed + controls
+                {myCallActive && callMembers.length <= 1 ? (
+                  // Caller waiting for the other person to answer
+                  <CallingScreen
+                    room={room}
+                    onHangup={() => callEmbed?.hangup()}
+                  />
+                ) : myCallActive && callMembers.length > 1 ? (
+                  // Both parties connected — show the embed
                   <>
                     <Box grow="Yes" ref={dmCallContainerRef} />
                     {callEmbed && callJoined && <CallControls callEmbed={callEmbed} />}
                   </>
                 ) : (
-                  // Someone else started a call — show prescreen so this user can join
+                  // Receiver: someone else started a call — show prescreen to join
                   <CallPrescreen />
                 )}
               </Box>

@@ -47,6 +47,9 @@ import { settingsAtom } from '../../state/settings';
 import { millify } from '../../plugins/millify';
 import { ScrollTopContainer } from '../../components/scroll-top-container';
 import { UserAvatar } from '../../components/user-avatar';
+import { AvatarPresence, PresenceBadge } from '../../components/presence';
+import { useUserPresence, Presence } from '../../hooks/useUserPresence';
+import { useUserVerificationStatus } from '../../hooks/useUserVerificationStatus';
 import { useRoomTypingMember } from '../../hooks/useRoomTypingMembers';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { useMembershipFilter, useMembershipFilterMenu } from '../../hooks/useMemberFilter';
@@ -126,30 +129,48 @@ function MemberItem({
     ? mx.mxcUrlToHttp(avatarMxcUrl, 100, 100, 'crop', undefined, false, useAuthentication)
     : undefined;
 
+  const userPresence = useUserPresence(member.userId);
+  const verifStatus = useUserVerificationStatus(member.userId);
+  const presence = userPresence?.presence ?? Presence.Offline;
+
   return (
     <MenuItem
-      style={{ padding: `0 ${config.space.S200}` }}
+      style={{ padding: `0 ${config.space.S200}`, opacity: presence === Presence.Offline ? 0.5 : 1 }}
       aria-pressed={pressed}
       data-user-id={member.userId}
       variant="Background"
       radii="400"
       onClick={onClick}
       before={
-        <Avatar size="200">
-          <UserAvatar
-            userId={member.userId}
-            src={avatarUrl ?? undefined}
-            alt={name}
-            renderFallback={() => <Icon size="50" src={Icons.User} filled />}
-          />
-        </Avatar>
+        <AvatarPresence
+          badge={<PresenceBadge presence={presence} status={userPresence?.status} size="200" />}
+        >
+          <Avatar size="200">
+            <UserAvatar
+              userId={member.userId}
+              src={avatarUrl ?? undefined}
+              alt={name}
+              renderFallback={() => <Icon size="50" src={Icons.User} filled />}
+            />
+          </Avatar>
+        </AvatarPresence>
       }
       after={
-        typing && (
-          <Badge size="300" variant="Secondary" fill="Soft" radii="Pill" outlined>
-            <TypingIndicator size="300" />
-          </Badge>
-        )
+        <>
+          {verifStatus?.isVerified() && (
+            <span
+              title="Verified user"
+              style={{ display: 'inline-flex', alignItems: 'center', marginLeft: '4px' }}
+            >
+              <Icon src={Icons.ShieldUser} size="50" style={{ color: '#3ba55d' }} />
+            </span>
+          )}
+          {typing && (
+            <Badge size="300" variant="Secondary" fill="Soft" radii="Pill" outlined>
+              <TypingIndicator size="300" />
+            </Badge>
+          )}
+        </>
       }
     >
       <Box grow="Yes">

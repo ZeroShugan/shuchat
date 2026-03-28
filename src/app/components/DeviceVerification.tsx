@@ -4,6 +4,8 @@ import {
   VerificationRequest,
   Verifier,
 } from 'matrix-js-sdk/lib/crypto-api';
+import { getMxIdLocalPart } from '../utils/matrix';
+import { useMatrixClient } from '../hooks/useMatrixClient';
 import React, { CSSProperties, useCallback, useEffect, useState } from 'react';
 import { VerificationMethod } from 'matrix-js-sdk/lib/types';
 import {
@@ -230,8 +232,9 @@ function VerificationCanceled({ onClose }: VerificationCanceledProps) {
 type DeviceVerificationProps = {
   request: VerificationRequest;
   onExit: () => void;
+  title?: string;
 };
-export function DeviceVerification({ request, onExit }: DeviceVerificationProps) {
+export function DeviceVerification({ request, onExit, title = 'Device Verification' }: DeviceVerificationProps) {
   const phase = useVerificationRequestPhase(request);
 
   const handleCancel = useCallback(() => {
@@ -259,7 +262,7 @@ export function DeviceVerification({ request, onExit }: DeviceVerificationProps)
           <Dialog variant="Surface">
             <Header style={DialogHeaderStyles} variant="Surface" size="500">
               <Box grow="Yes">
-                <Text size="H4">Device Verification</Text>
+                <Text size="H4">{title}</Text>
               </Box>
               <IconButton size="300" radii="300" onClick={handleCancel}>
                 <Icon src={Icons.Cross} />
@@ -299,6 +302,128 @@ export function DeviceVerification({ request, onExit }: DeviceVerificationProps)
   );
 }
 
+
+type CrossUserVerificationBannerProps = {
+  displayName: string;
+  userId: string;
+  onIgnore: () => void;
+  onVerify: () => void;
+};
+function CrossUserVerificationBanner({
+  displayName,
+  userId,
+  onIgnore,
+  onVerify,
+}: CrossUserVerificationBannerProps) {
+  const [countdown, setCountdown] = React.useState(60);
+
+  React.useEffect(() => {
+    const interval = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev <= 1) {
+          onIgnore();
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [onIgnore]);
+
+  return (
+    <Box
+      style={{
+        position: 'fixed',
+        bottom: '1.5rem',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        zIndex: 9998,
+        background: 'var(--mx-surface-bg, #1e1f22)',
+        border: '1px solid rgba(255,255,255,0.12)',
+        borderRadius: '0.75rem',
+        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+        padding: '0.75rem 1rem',
+        minWidth: '20rem',
+        maxWidth: '28rem',
+      }}
+      alignItems="Center"
+      gap="300"
+    >
+      <Icon src={Icons.Lock} size="200" style={{ flexShrink: 0, opacity: 0.8 }} />
+      <Box direction="Column" gap="100" grow="Yes">
+        <Text size="B400">Verification requested</Text>
+        <Text size="T300" style={{ opacity: 0.7, wordBreak: 'break-all' }}>
+          {displayName} ({userId})
+        </Text>
+      </Box>
+      <Box gap="200" shrink="No">
+        <Button size="300" variant="Secondary" fill="Soft" radii="300" onClick={onIgnore}>
+          <Text size="B300">Ignore ({countdown})</Text>
+        </Button>
+        <Button size="300" variant="Primary" fill="Solid" radii="300" onClick={onVerify}>
+          <Text size="B300">Verify User</Text>
+        </Button>
+      </Box>
+    </Box>
+  );
+}
+
+export function ReceiveCrossUserVerification() {
+  const mx = useMatrixClient();
+  const [request, setRequest] = React.useState<VerificationRequest>();
+  const [showBanner, setShowBanner] = React.useState(false);
+
+  useVerificationRequestReceived(
+    React.useCallback((req: VerificationRequest) => {
+      if (req.isSelfVerification) return;
+      setRequest(req);
+      setShowBanner(true);
+    }, [])
+  );
+
+  const handleIgnore = React.useCallback(() => {
+    if (
+      request &&
+      request.phase !== VerificationPhase.Done &&
+      request.phase !== VerificationPhase.Cancelled
+    ) {
+      request.cancel();
+    }
+    setShowBanner(false);
+    setRequest(undefined);
+  }, [request]);
+
+  const handleVerify = React.useCallback(() => {
+    setShowBanner(false);
+  }, []);
+
+  const handleExit = React.useCallback(() => {
+    setRequest(undefined);
+    setShowBanner(false);
+  }, []);
+
+  if (!request) return null;
+
+  const userId = request.otherUserId;
+  const user = mx.getUser(userId);
+  const displayName = user?.displayName ?? getMxIdLocalPart(userId) ?? userId;
+
+  return (
+    <>
+      {showBanner && (
+        <CrossUserVerificationBanner
+          displayName={displayName}
+          userId={userId}
+          onIgnore={handleIgnore}
+          onVerify={handleVerify}
+        />
+      )}
+      {!showBanner && (
+        <DeviceVerification request={request} title="Verify User" onExit={handleExit} />
+      )}
+    </>
+  );
+}
 export function ReceiveSelfDeviceVerification() {
   const [request, setRequest] = useState<VerificationRequest>();
 

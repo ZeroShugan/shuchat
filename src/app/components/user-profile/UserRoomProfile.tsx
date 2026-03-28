@@ -1,6 +1,10 @@
-import { Box, Button, config, Icon, Icons, Text } from 'folds';
+import { Box, Button, config, Icon, Icons, Spinner, Text } from 'folds';
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
+import { VerificationRequest } from 'matrix-js-sdk/lib/crypto-api';
+import { DeviceVerification } from '../DeviceVerification';
+import { useCrossSigningActive } from '../../hooks/useCrossSigning';
+import { useUserVerificationStatus } from '../../hooks/useUserVerificationStatus';
 import { UserHero, UserHeroName } from './UserHero';
 import { getMxIdServer, mxcUrlToHttp } from '../../utils/matrix';
 import { getMemberAvatarMxc, getMemberDisplayName } from '../../utils/room';
@@ -62,6 +66,33 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
 
   const presence = useUserPresence(userId);
 
+  const crossSigningActive = useCrossSigningActive();
+  const userVerifStatus = useUserVerificationStatus(userId);
+  const isVerified = userVerifStatus?.isVerified() ?? false;
+  const [verificationRequest, setVerificationRequest] = React.useState<VerificationRequest>();
+  const [verifyError, setVerifyError] = React.useState<string>();
+
+  const handleVerify = React.useCallback(async () => {
+    const crypto = mx.getCrypto();
+    if (!crypto) return;
+    const dmRoom = getDMRoomFor(mx, userId);
+    if (!dmRoom) {
+      setVerifyError('Start a direct message first to verify this user.');
+      return;
+    }
+    setVerifyError(undefined);
+    try {
+      const req = await crypto.requestVerificationDM(userId, dmRoom.roomId);
+      setVerificationRequest(req);
+    } catch (e) {
+      setVerifyError(e instanceof Error ? e.message : 'Verification request failed.');
+    }
+  }, [mx, userId]);
+
+  const handleVerifyExit = React.useCallback(() => {
+    setVerificationRequest(undefined);
+  }, []);
+
   const handleMessage = () => {
     closeUserRoomProfile();
     const directSearchParam: DirectCreateSearchParams = {
@@ -80,18 +111,7 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
       startCall(dmRoom, { microphone, video, sound });
       // Navigate into the DM room so the call embed is visible in context
       navigate(getDirectRoomPath(dmRoom.roomId));
-      // Send m.call.notify (MSC4075) so other Matrix clients ring
-      try {
-        await mx.sendEvent(dmRoom.roomId, 'm.call.notify' as any, {
-          call_id: '',
-          application: 'm.call',
-          'm.mentions': { user_ids: [userId], room: false },
-          notify_type: 'ring',
-        });
-      } catch (e) {
-        // Non-fatal: best-effort ring notification
-        console.warn('Failed to send call notify:', e);
-      }
+      // m.call.notify is now sent by useCallStart (useCallEmbed.ts)
     } else {
       // No DM yet — open DM creation screen
       const directSearchParam: DirectCreateSearchParams = { userId };
@@ -100,7 +120,8 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
   };
 
   return (
-    <Box direction="Column">
+    <>
+      <Box direction="Column">
       <UserHero
         userId={userId}
         avatarUrl={avatarUrl}
@@ -135,6 +156,41 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
               </Box>
             )}
           </Box>
+          {userId !== myUserId && crossSigningActive && (
+            <Box direction="Column" gap="100">
+              {isVerified ? (
+                <Box
+                  alignItems="Center"
+                  gap="200"
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '6px',
+                    background: 'rgba(59,165,93,0.15)',
+                    border: '1px solid rgba(59,165,93,0.4)',
+                  }}
+                >
+                  <Icon size="50" src={Icons.ShieldUser} style={{ color: '#3ba55d' }} />
+                  <Text size="B300" style={{ color: '#3ba55d' }}>Verified</Text>
+                </Box>
+              ) : (
+                <Button
+                  size="300"
+                  variant="Secondary"
+                  fill="Soft"
+                  radii="300"
+                  before={<Icon size="50" src={Icons.ShieldUser} />}
+                  onClick={handleVerify}
+                >
+                  <Text size="B300">Verify User</Text>
+                </Button>
+              )}
+              {verifyError && (
+                <Text size="T200" style={{ color: 'var(--mx-tc-critical, #f87171)' }}>
+                  {verifyError}
+                </Text>
+              )}
+            </Box>
+          )}
           <Box alignItems="Center" gap="200" wrap="Wrap">
             {server && <ServerChip server={server} />}
             <ShareChip userId={userId} />
@@ -180,5 +236,13 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
         />
       </Box>
     </Box>
+      {verificationRequest && (
+        <DeviceVerification
+          request={verificationRequest}
+          title="Verify User"
+          onExit={handleVerifyExit}
+        />
+      )}
+    </>
   );
 }

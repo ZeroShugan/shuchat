@@ -47,6 +47,12 @@ export class CallEmbed {
 
   private readonly disposables: Array<() => void> = [];
 
+  // Stable bound refs so dispose() can actually remove them
+  private readonly onEventBound: (ev: MatrixEvent) => void;
+  private readonly onEventDecryptedBound: (ev: MatrixEvent) => void;
+  private readonly onStateUpdateBound: (ev: MatrixEvent) => void;
+  private readonly onToDeviceEventBound: (ev: MatrixEvent) => Promise<void>;
+
   static getIntent(dm: boolean, ongoing: boolean): ElementCallIntent {
     if (ongoing) {
       return dm ? ElementCallIntent.JoinExistingDM : ElementCallIntent.JoinExisting;
@@ -145,9 +151,17 @@ export class CallEmbed {
     const controlState = initialControlState ?? new CallControlState(true, false, true);
     this.control = new CallControl(controlState, call, iframe);
 
+    this.onEventBound = this.onEvent.bind(this);
+    this.onEventDecryptedBound = this.onEventDecrypted.bind(this);
+    this.onStateUpdateBound = this.onStateUpdate.bind(this);
+    this.onToDeviceEventBound = this.onToDeviceEvent.bind(this);
+
     let initialMediaEvent = true;
     this.disposables.push(
       this.listenAction<ElementMediaStateDetail>(ElementWidgetActions.DeviceMute, (evt) => {
+        // Acknowledge the action so Element Call does not log an error
+        evt.preventDefault();
+        this.call.transport.reply(evt.detail, {});
         if (initialMediaEvent) {
           initialMediaEvent = false;
           this.control.applyState();
@@ -198,7 +212,31 @@ export class CallEmbed {
     // Room widgets get locked to the room they were added in
     this.call.setViewedRoomId(this.roomId);
     this.disposables.push(
-      this.listenAction(ElementWidgetActions.JoinCall, this.onCallJoined.bind(this))
+      this.listenAction(ElementWidgetActions.JoinCall, (evt: CustomEvent) => {
+        // Acknowledge so Element Call does not log an unsupported-action error
+        evt.preventDefault();
+        this.call.transport.reply(evt.detail, {});
+        this.onCallJoined();
+      })
+    );
+    // Stub handlers for widget actions Cinny does not need to act on but must acknowledge
+    this.disposables.push(
+      this.listenAction(ElementWidgetActions.AlwaysOnScreen, (evt: CustomEvent) => {
+        evt.preventDefault();
+        this.call.transport.reply(evt.detail, {});
+      })
+    );
+    this.disposables.push(
+      this.listenAction(ElementWidgetActions.TileLayout, (evt: CustomEvent) => {
+        evt.preventDefault();
+        this.call.transport.reply(evt.detail, {});
+      })
+    );
+    this.disposables.push(
+      this.listenAction(ElementWidgetActions.SpotlightLayout, (evt: CustomEvent) => {
+        evt.preventDefault();
+        this.call.transport.reply(evt.detail, {});
+      })
     );
 
     // Populate the map of "read up to" events for this widget with the current event in every room.
@@ -213,10 +251,10 @@ export class CallEmbed {
     });
 
     // Attach listeners for feeding events - the underlying widget classes handle permissions for us
-    this.mx.on(ClientEvent.Event, this.onEvent.bind(this));
-    this.mx.on(MatrixEventEvent.Decrypted, this.onEventDecrypted.bind(this));
-    this.mx.on(RoomStateEvent.Events, this.onStateUpdate.bind(this));
-    this.mx.on(ClientEvent.ToDeviceEvent, this.onToDeviceEvent.bind(this));
+    this.mx.on(ClientEvent.Event, this.onEventBound);
+    this.mx.on(MatrixEventEvent.Decrypted, this.onEventDecryptedBound);
+    this.mx.on(RoomStateEvent.Events, this.onStateUpdateBound);
+    this.mx.on(ClientEvent.ToDeviceEvent, this.onToDeviceEventBound);
   }
 
   /**
@@ -232,10 +270,10 @@ export class CallEmbed {
     this.container.removeChild(this.iframe);
     this.control.dispose();
 
-    this.mx.off(ClientEvent.Event, this.onEvent.bind(this));
-    this.mx.off(MatrixEventEvent.Decrypted, this.onEventDecrypted.bind(this));
-    this.mx.off(RoomStateEvent.Events, this.onStateUpdate.bind(this));
-    this.mx.off(ClientEvent.ToDeviceEvent, this.onToDeviceEvent.bind(this));
+    this.mx.off(ClientEvent.Event, this.onEventBound);
+    this.mx.off(MatrixEventEvent.Decrypted, this.onEventDecryptedBound);
+    this.mx.off(RoomStateEvent.Events, this.onStateUpdateBound);
+    this.mx.off(ClientEvent.ToDeviceEvent, this.onToDeviceEventBound);
 
     // Clear internal state
     this.readUpToMap = {};

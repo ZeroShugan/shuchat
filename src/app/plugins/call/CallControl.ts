@@ -93,9 +93,13 @@ export class CallControl extends EventEmitter implements CallControlState {
   }
 
   public async applyState() {
+    // setMediaState sends toWidget:device_mute — if Element Call does not reply in time,
+    // the await rejects. Always run setSound/emitStateUpdate regardless.
     await this.setMediaState({
       audio_enabled: this.microphone,
       video_enabled: this.video,
+    }).catch(() => {
+      // Element Call may not reply to device_mute — ignore timeout
     });
     this.setSound(this.sound);
     this.emitStateUpdate();

@@ -10,6 +10,7 @@ import { useRoom } from '../../hooks/useRoom';
 import { getMxIdLocalPart, mxcUrlToHttp } from '../../utils/matrix';
 import { UserAvatar } from '../../components/user-avatar';
 import { getMouseEventCords } from '../../utils/dom';
+import { useUserVerificationStatus } from '../../hooks/useUserVerificationStatus';
 import * as css from './styles.css';
 
 interface MemberWithMembershipData {
@@ -37,6 +38,7 @@ export function CallMemberCard({ member }: CallMemberCardProps) {
     ? mxcUrlToHttp(mx, avatarMxc, useAuthentication, 96, 96) ?? undefined
     : undefined;
 
+  const verifStatus = useUserVerificationStatus(userId);
   const audioOnly =
     (member as unknown as MemberWithMembershipData).membershipData?.['m.call.intent'] === 'audio';
 
@@ -66,10 +68,15 @@ export function CallMemberCard({ member }: CallMemberCardProps) {
             renderFallback={() => <Icon size="50" src={Icons.User} filled />}
           />
         </Avatar>
-        <Box grow="Yes">
+        <Box grow="Yes" alignItems="Center" gap="100">
           <Text size="L400" truncate>
             {name}
           </Text>
+          {verifStatus?.isVerified() && (
+            <span title="Verified user" style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+              <Icon src={Icons.ShieldUser} size="50" style={{ color: '#3ba55d' }} />
+            </span>
+          )}
         </Box>
         {audioOnly && <Icon src={Icons.VideoCameraMute} size="100" />}
       </Box>

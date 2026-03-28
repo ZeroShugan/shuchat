@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Avatar, Box, Button, Icon, Icons, Text } from 'folds';
 import { MatrixEvent, RoomEvent } from 'matrix-js-sdk';
+import { MatrixRTCSessionManagerEvents } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSessionManager';
+import { MatrixRTCSession } from 'matrix-js-sdk/lib/matrixrtc/MatrixRTCSession';
 import InviteSound from '../../../public/sound/invite.ogg';
 import { useMatrixClient } from '../hooks/useMatrixClient';
 import { getMxIdLocalPart, mxcUrlToHttp } from '../utils/matrix';
@@ -8,6 +10,8 @@ import { getDirectRoomPath } from '../pages/pathUtils';
 import { useNavigate } from 'react-router-dom';
 import { useMediaAuthentication } from '../hooks/useMediaAuthentication';
 import { UserAvatar } from './user-avatar';
+import { useCallStart } from '../hooks/useCallEmbed';
+import { useCallPreferences } from '../state/hooks/callPreferences';
 
 type IncomingCall = {
   roomId: string;
@@ -22,27 +26,44 @@ export function IncomingCallNotification() {
   const useAuthentication = useMediaAuthentication();
   const [incoming, setIncoming] = useState<IncomingCall | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  const startCall = useCallStart(true); // true = DM call
+  const { microphone, video, sound } = useCallPreferences();
 
   const stopRing = useCallback(() => {
     const el = audioRef.current;
     if (el) { el.pause(); el.currentTime = 0; }
   }, []);
 
+  // Decline: send a signal event so caller knows, then dismiss
+  const decline = useCallback(() => {
+    if (!incoming) return;
+    stopRing();
+    // Send decline signal to the room
+    mx.sendEvent(incoming.roomId, 'dev.shugan.call.decline' as any, {
+      caller_id: incoming.callerId,
+    }).catch(() => {});
+    setIncoming(null);
+  }, [incoming, mx, stopRing]);
+
   const dismiss = useCallback(() => {
     stopRing();
     setIncoming(null);
   }, [stopRing]);
 
-  // Answer: navigate to the DM room.
-  // Room.tsx will detect the active call via Matrix RTC state events and show
-  // CallPrescreen with a "Join" button — this ensures the receiver joins the
-  // *existing* session (JoinExistingDM intent) rather than starting a new call.
+  // Answer: navigate to the DM room AND immediately join the call
   const answer = useCallback(() => {
     if (!incoming) return;
     stopRing();
+    const room = mx.getRoom(incoming.roomId);
     setIncoming(null);
     navigate(getDirectRoomPath(incoming.roomId));
-  }, [incoming, navigate, stopRing]);
+    if (room) {
+      // Small delay to let navigation settle before starting the embed
+      setTimeout(() => {
+        startCall(room, { microphone, video, sound });
+      }, 150);
+    }
+  }, [incoming, navigate, stopRing, mx, startCall, microphone, video, sound]);
 
   useEffect(() => {
     const myUserId = mx.getSafeUserId();
@@ -81,6 +102,55 @@ export function IncomingCallNotification() {
     };
   }, [mx, useAuthentication, stopRing]);
 
+  // Fallback: detect incoming calls via MatrixRTC session start in DM rooms
+  // This fires even without m.call.notify — it watches for call.member state events
+  useEffect(() => {
+    const myUserId = mx.getSafeUserId();
+
+    const handleSessionStarted = (_roomId: string) => {
+      // Only trigger for DM rooms where someone else started the call
+      const room = mx.getRoom(_roomId);
+      if (!room) return;
+      // Check if it's a DM (has exactly 2 joined members including us)
+      const members = room.getMembers().filter(
+        (m) => m.membership === 'join'
+      );
+      const isDM = members.length <= 2 && members.some((m) => m.userId === myUserId);
+      if (!isDM) return;
+      // Check if WE are the caller (we already have an active embed for this room)
+      // We only ring if someone ELSE started the call
+      const rtcSession = mx.matrixRTC.getRoomSession(room);
+      const callMembers = MatrixRTCSession.sessionMembershipsForRoom(
+        room,
+        rtcSession.sessionDescription
+      );
+      const someoneElseCalling = callMembers.some(
+        (cm) => cm.sender !== myUserId
+      );
+      if (!someoneElseCalling) return;
+      // Don't ring if we already have an incoming notification or are already in this call
+      if (incoming?.roomId === _roomId) return;
+
+      const caller = callMembers.find((cm) => cm.sender !== myUserId);
+      const callerId = caller?.sender ?? '';
+      const callerMember = room.getMember(callerId);
+      const callerName =
+        callerMember?.rawDisplayName ?? getMxIdLocalPart(callerId) ?? callerId;
+      const callerAvatarMxc = callerMember?.getMxcAvatarUrl() ?? undefined;
+      const callerAvatar = callerAvatarMxc
+        ? mxcUrlToHttp(mx, callerAvatarMxc, useAuthentication, 96, 96) ?? undefined
+        : undefined;
+
+      setIncoming({ roomId: _roomId, callerId, callerName, callerAvatar });
+      audioRef.current?.play().catch(() => {});
+    };
+
+    mx.matrixRTC.on(MatrixRTCSessionManagerEvents.SessionStarted, handleSessionStarted);
+    return () => {
+      mx.matrixRTC.off(MatrixRTCSessionManagerEvents.SessionStarted, handleSessionStarted);
+    };
+  }, [mx, useAuthentication, incoming]);
+
   // Auto-dismiss after 30 seconds
   useEffect(() => {
     if (!incoming) return;
@@ -99,57 +169,75 @@ export function IncomingCallNotification() {
         <Box
           style={{
             position: 'fixed',
-            bottom: '1.5rem',
-            right: '1.5rem',
+            inset: 0,
             zIndex: 9999,
-            width: '22rem',
-            background: 'var(--mx-surface-bg, #1e1f22)',
-            border: '1px solid rgba(255,255,255,0.12)',
-            borderRadius: '0.75rem',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.55)',
-            padding: '1rem',
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
           }}
-          direction="Column"
-          gap="400"
         >
-          <Box gap="400" alignItems="Center">
-            <Avatar size="400" radii="400">
+          <Box
+            direction="Column"
+            alignItems="Center"
+            gap="500"
+            style={{
+              background: 'var(--mx-surface-bg, #1e1f22)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              borderRadius: '1rem',
+              boxShadow: '0 16px 48px rgba(0,0,0,0.7)',
+              padding: '2.5rem 3rem',
+              minWidth: '18rem',
+            }}
+          >
+            <Avatar size="600" radii="Pill">
               <UserAvatar
                 userId={incoming.callerId}
                 src={incoming.callerAvatar}
                 alt={incoming.callerName}
-                renderFallback={() => <Icon size="200" src={Icons.User} filled />}
+                renderFallback={() => <Icon size="400" src={Icons.User} filled />}
               />
             </Avatar>
-            <Box direction="Column" grow="Yes">
-              <Text size="B400" truncate>{incoming.callerName}</Text>
-              <Text size="T300" style={{ opacity: 0.6 }}>Incoming call...</Text>
+            <Box direction="Column" alignItems="Center" gap="100">
+              <Text size="H4">{incoming.callerName}</Text>
+              <Box alignItems="Center" gap="200">
+                <span style={{
+                  width: '8px', height: '8px', borderRadius: '50%',
+                  backgroundColor: '#3ba55d', display: 'inline-block',
+                  animation: 'pulse 1.4s ease-in-out infinite',
+                }} />
+                <Text size="T300" style={{ opacity: 0.7 }}>Incoming voice call</Text>
+              </Box>
             </Box>
-            <Icon size="300" src={Icons.Phone} filled />
+            <Box gap="400">
+              <Button
+                variant="Critical"
+                fill="Solid"
+                size="500"
+                radii="Pill"
+                onClick={decline}
+                before={<Icon src={Icons.PhoneDown} size="200" filled />}
+              >
+                <Text size="B400">Decline</Text>
+              </Button>
+              <Button
+                variant="Success"
+                fill="Solid"
+                size="500"
+                radii="Pill"
+                onClick={answer}
+                before={<Icon src={Icons.Phone} size="200" filled />}
+              >
+                <Text size="B400">Answer</Text>
+              </Button>
+            </Box>
           </Box>
-          <Box gap="300">
-            <Button
-              grow="Yes"
-              variant="Critical"
-              fill="Soft"
-              size="400"
-              radii="400"
-              onClick={dismiss}
-            >
-              <Text size="B300">Decline</Text>
-            </Button>
-            <Button
-              grow="Yes"
-              variant="Success"
-              fill="Solid"
-              size="400"
-              radii="400"
-              onClick={answer}
-              before={<Icon size="100" src={Icons.Phone} filled />}
-            >
-              <Text size="B300">Answer</Text>
-            </Button>
-          </Box>
+          <style>{`
+            @keyframes pulse {
+              0%, 100% { opacity: 1; transform: scale(1); }
+              50% { opacity: 0.4; transform: scale(0.85); }
+            }
+          `}</style>
         </Box>
       )}
     </>
