@@ -15,7 +15,7 @@ import {
 } from '../../pathUtils';
 import { useCreateSelected } from '../../../hooks/router/useCreateSelected';
 import { JoinAddressPrompt } from '../../../components/join-address-prompt';
-import { CreateFolderPrompt } from '../../../components/add-to-folder-prompt';
+import { CreateFolderPrompt } from '../../../components/add-to-folder-prompt/CreateFolderPrompt';
 import { _RoomSearchParams } from '../../paths';
 
 export function CreateTab() {

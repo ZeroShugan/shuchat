@@ -96,6 +96,7 @@ import { useRoomNavigate } from '../../../hooks/useRoomNavigate';
 import { useRoomCreators } from '../../../hooks/useRoomCreators';
 import { useRoomPermissions } from '../../../hooks/useRoomPermissions';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
+import { AddToFolderPrompt } from '../../../components/add-to-folder-prompt/AddToFolderPrompt';
 
 type SpaceMenuProps = {
   room: Room;

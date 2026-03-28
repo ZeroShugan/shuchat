@@ -57,7 +57,7 @@ import { RoomNotificationModeSwitcher } from '../../components/RoomNotificationS
 import { useRoomCreators } from '../../hooks/useRoomCreators';
 import { useRoomPermissions } from '../../hooks/useRoomPermissions';
 import { InviteUserPrompt } from '../../components/invite-user-prompt';
-import { AddToFolderPrompt } from '../../components/add-to-folder-prompt';
+import { AddToFolderPrompt } from '../../components/add-to-folder-prompt/AddToFolderPrompt';
 import {
   ISidebarFolder,
   InCinnySpacesContent,

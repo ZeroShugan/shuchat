@@ -86,7 +86,7 @@ import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { BreakWord } from '../../../styles/Text.css';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
 import { useCallEmbed } from '../../../hooks/useCallEmbed';
-import { AddToFolderPrompt } from '../../../components/add-to-folder-prompt';
+import { AddToFolderPrompt } from '../../../components/add-to-folder-prompt/AddToFolderPrompt';
 
 type SpaceMenuProps = {
   room: Room;
