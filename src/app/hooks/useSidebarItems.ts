@@ -10,6 +10,7 @@ export type ISidebarFolder = {
   name?: string;
   id: string;
   content: string[];
+  avatarUrl?: string;
 };
 export type TSidebarItem = string | ISidebarFolder;
 export type SidebarItems = Array<TSidebarItem>;
@@ -33,7 +34,7 @@ export const parseSidebar = (
     if (typeof spaceId !== 'string') return false;
     const space = mx.getRoom(spaceId);
     if (space?.getMyMembership() !== Membership.Join) return false;
-    return isSpace(space);
+    return true; // Any joined room may appear in sidebar
   };
 
   sidebar.forEach((item) => {

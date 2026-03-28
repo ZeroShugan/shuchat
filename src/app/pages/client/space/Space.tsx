@@ -6,6 +6,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAtom, useAtomValue } from 'jotai';
 import {
   Avatar,
@@ -38,7 +39,7 @@ import {
   NavItemContent,
   NavLink,
 } from '../../../components/nav';
-import { getSpaceLobbyPath, getSpaceRoomPath, getSpaceSearchPath } from '../../pathUtils';
+import { getSpaceLobbyPath, getSpaceRoomPath, getSpaceSearchPath, getHomePath, getHomeRoomPath } from '../../pathUtils';
 import { getCanonicalAliasOrRoomId, isRoomAlias } from '../../../utils/matrix';
 import { useSelectedRoom } from '../../../hooks/router/useSelectedRoom';
 import {
@@ -85,6 +86,7 @@ import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { BreakWord } from '../../../styles/Text.css';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
 import { useCallEmbed } from '../../../hooks/useCallEmbed';
+import { AddToFolderPrompt } from '../../../components/add-to-folder-prompt';
 
 type SpaceMenuProps = {
   room: Room;
@@ -375,10 +377,107 @@ export function SpaceTombstone({ roomId, replacementRoomId }: SpaceTombstoneProp
   );
 }
 
+type NotASpaceViewProps = { room: Room };
+function NotASpaceView({ room }: NotASpaceViewProps) {
+  const mx = useMatrixClient();
+  const navigate = useNavigate();
+  const [addToFolder, setAddToFolder] = useState(false);
+
+  const handleGoToRoom = () => {
+    const roomIdOrAlias = getCanonicalAliasOrRoomId(mx, room.roomId);
+    navigate(getHomeRoomPath(roomIdOrAlias));
+  };
+
+  return (
+    <PageNav>
+      <PageNavHeader>
+        <Box alignItems="Center" grow="Yes" gap="300">
+          <Box grow="Yes">
+            <Text size="H4" truncate>{room.name}</Text>
+          </Box>
+        </Box>
+      </PageNavHeader>
+      <PageNavContent>
+        <Box
+          direction="Column"
+          gap="400"
+          style={{ padding: config.space.S400 }}
+        >
+          <Box direction="Column" gap="200">
+            <Text size="H5">This is a chat room, not a space</Text>
+            <Text size="T300" priority="300">
+              You joined via "Add Space", but <b>{room.name}</b> is a regular chat room.
+              You can pin it to your sidebar or just open it directly.
+            </Text>
+          </Box>
+          <Box direction="Column" gap="200">
+            <Button
+              variant="Primary"
+              fill="Solid"
+              size="300"
+              radii="300"
+              onClick={handleGoToRoom}
+              before={<Icon size="100" src={Icons.ArrowGoRight} />}
+            >
+              <Text size="B300">Open Room</Text>
+            </Button>
+            <Button
+              variant="Secondary"
+              fill="Soft"
+              size="300"
+              radii="300"
+              onClick={() => setAddToFolder(true)}
+              before={<Icon size="100" src={Icons.Category} />}
+            >
+              <Text size="B300">Add to Sidebar</Text>
+            </Button>
+            <UseStateProvider initial={false}>
+              {(promptLeave, setPromptLeave) => (
+                <>
+                  <Button
+                    variant="Critical"
+                    fill="None"
+                    size="300"
+                    radii="300"
+                    onClick={() => setPromptLeave(true)}
+                    before={<Icon size="100" src={Icons.ArrowGoLeft} />}
+                  >
+                    <Text size="B300">Leave Room</Text>
+                  </Button>
+                  {promptLeave && (
+                    <LeaveSpacePrompt
+                      roomId={room.roomId}
+                      onDone={() => navigate(getHomePath())}
+                      onCancel={() => setPromptLeave(false)}
+                    />
+                  )}
+                </>
+              )}
+            </UseStateProvider>
+          </Box>
+        </Box>
+        {addToFolder && (
+          <AddToFolderPrompt
+            roomId={room.roomId}
+            onDone={() => { setAddToFolder(false); handleGoToRoom(); }}
+            onCancel={() => setAddToFolder(false)}
+          />
+        )}
+      </PageNavContent>
+    </PageNav>
+  );
+}
+
 export function Space() {
   const mx = useMatrixClient();
   const space = useSpace();
   useNavToActivePathMapper(space.roomId);
+
+  // If this is a regular room (not a space), show a warning/option view
+  if (!space.isSpaceRoom()) {
+    return <NotASpaceView room={space} />;
+  }
+
   const spaceIdOrAlias = getCanonicalAliasOrRoomId(mx, space.roomId);
   const scrollRef = useRef<HTMLDivElement>(null);
   const mDirects = useAtomValue(mDirectAtom);

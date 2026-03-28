@@ -57,6 +57,13 @@ import { RoomNotificationModeSwitcher } from '../../components/RoomNotificationS
 import { useRoomCreators } from '../../hooks/useRoomCreators';
 import { useRoomPermissions } from '../../hooks/useRoomPermissions';
 import { InviteUserPrompt } from '../../components/invite-user-prompt';
+import { AddToFolderPrompt } from '../../components/add-to-folder-prompt';
+import {
+  ISidebarFolder,
+  InCinnySpacesContent,
+} from '../../hooks/useSidebarItems';
+import { getAccountData } from '../../utils/room';
+import { AccountDataEvent } from '../../../types/matrix/accountData';
 import { useRoomName } from '../../hooks/useRoomMeta';
 import { useCallMembers, useCallSession } from '../../hooks/useCall';
 import { useCallEmbed, useCallStart } from '../../hooks/useCallEmbed';
@@ -92,6 +99,18 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
     };
     const [hideActivity] = useSetting(settingsAtom, 'hideActivity');
     const unread = useRoomUnread(room.roomId, roomToUnreadAtom);
+
+  // Check if this room is pinned to sidebar (for visual indicator)
+  const isPinnedToSidebar = (() => {
+    const content = getAccountData(mx, AccountDataEvent.CinnySpaces)
+      ?.getContent<InCinnySpacesContent>();
+    const sidebar = content?.sidebar ?? content?.shortcut ?? [];
+    return sidebar.some(
+      (item) =>
+        item === room.roomId ||
+        (typeof item === 'object' && (item as ISidebarFolder).content.includes(room.roomId))
+    );
+  })();
     const powerLevels = usePowerLevels(room);
     const creators = useRoomCreators(room);
 
@@ -101,6 +120,28 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
     const space = useSpaceOptionally();
 
     const [invitePrompt, setInvitePrompt] = useState(false);
+    const [moveToFolderPrompt, setMoveToFolderPrompt] = useState(false);
+
+    // Check if this room is currently in a sidebar folder
+    const isInSidebarFolder = (() => {
+      const content = getAccountData(mx, AccountDataEvent.CinnySpaces)
+        ?.getContent<InCinnySpacesContent>();
+      const sidebar = content?.sidebar ?? content?.shortcut ?? [];
+      return sidebar.some(
+        (item) =>
+          typeof item === 'object' &&
+          (item as ISidebarFolder).content.includes(room.roomId)
+      );
+    })();
+
+    const isInSidebar = (() => {
+      const content = getAccountData(mx, AccountDataEvent.CinnySpaces)
+        ?.getContent<InCinnySpacesContent>();
+      const sidebar = content?.sidebar ?? content?.shortcut ?? [];
+      return sidebar.some(
+        (item) => item === room.roomId || (typeof item === 'object' && (item as ISidebarFolder).content.includes(room.roomId))
+      );
+    })();
 
     const handleMarkAsRead = () => {
       markAsRead(mx, room.roomId, hideActivity);
@@ -132,6 +173,13 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
               setInvitePrompt(false);
               requestClose();
             }}
+          />
+        )}
+        {moveToFolderPrompt && (
+          <AddToFolderPrompt
+            roomId={room.roomId}
+            onDone={() => { setMoveToFolderPrompt(false); requestClose(); }}
+            onCancel={() => setMoveToFolderPrompt(false)}
           />
         )}
         <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
@@ -219,6 +267,17 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
           >
             <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
               Room Settings
+            </Text>
+          </MenuItem>
+          <MenuItem
+            onClick={() => { setMoveToFolderPrompt(true); }}
+            size="300"
+            after={<Icon size="100" src={Icons.Category} />}
+            radii="300"
+            aria-pressed={moveToFolderPrompt}
+          >
+            <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
+              {isInSidebar ? 'Move to Folder' : 'Add to Sidebar'}
             </Text>
           </MenuItem>
         </Box>

@@ -12,9 +12,11 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
+  Button,
   Icon,
   IconButton,
   Icons,
+  Input,
   Line,
   Menu,
   MenuItem,
@@ -85,11 +87,12 @@ import { copyToClipboard } from '../../../utils/dom';
 import { stopPropagation } from '../../../utils/keyboard';
 import { getMatrixToRoom } from '../../../plugins/matrix-to';
 import { getViaServers } from '../../../plugins/via-servers';
-import { getRoomAvatarUrl } from '../../../utils/room';
+import { getRoomAvatarUrl, isSpace } from '../../../utils/room';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { useSetting } from '../../../state/hooks/settings';
 import { settingsAtom } from '../../../state/settings';
 import { useOpenSpaceSettings } from '../../../state/hooks/spaceSettings';
+import { useRoomNavigate } from '../../../hooks/useRoomNavigate';
 import { useRoomCreators } from '../../../hooks/useRoomCreators';
 import { useRoomPermissions } from '../../../hooks/useRoomPermissions';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
@@ -448,7 +451,7 @@ function SpaceTab({
                 as="button"
                 data-id={space.roomId}
                 ref={triggerRef}
-                size={folder ? '300' : '400'}
+                size={folder ? '200' : '400'}
                 onClick={onClick}
                 onContextMenu={handleContextMenu}
               >
@@ -457,7 +460,7 @@ function SpaceTab({
                   src={getRoomAvatarUrl(mx, space, 96, useAuthentication) ?? undefined}
                   alt={space.name}
                   renderFallback={() => (
-                    <Text size={folder ? 'H6' : 'H4'}>{nameInitials(space.name, 2)}</Text>
+                    <Text size={folder ? 'Inherit' : 'H4'}>{nameInitials(space.name, 2)}</Text>
                   )}
                 />
               </SidebarAvatar>
@@ -526,11 +529,96 @@ function OpenedSpaceFolder({ folder, onClose, children }: OpenedSpaceFolderProps
           <Icon size="400" src={Icons.ChevronTop} filled />
         </IconButton>
       </SidebarAvatar>
-      {children}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px', width: '100%' }}>
+        {children}
+      </div>
       <SidebarFolderDropTarget ref={belowTargetRef} position="Bottom" />
     </SidebarFolder>
   );
 }
+
+type FolderMenuProps = {
+  folder: ISidebarFolder;
+  requestClose: () => void;
+  onUngroup: () => void;
+};
+const FolderMenu = forwardRef<HTMLDivElement, FolderMenuProps>(
+  ({ folder, requestClose, onUngroup }, ref) => {
+    const mx = useMatrixClient();
+    const roomToParents = useAtomValue(roomToParentsAtom);
+    const orphanSpaces = useOrphanSpaces(mx, allRoomsAtom, roomToParents);
+    const [sidebarItems, localEchoSidebarItem] = useSidebarItems(orphanSpaces);
+    const [renaming, setRenaming] = useState(false);
+    const [renameValue, setRenameValue] = useState(folder.name ?? '');
+
+    const handleRenameConfirm = () => {
+      const newItems = sidebarItems.map((i) =>
+        typeof i === 'object' && i.id === folder.id
+          ? { ...i, name: renameValue.trim() || undefined }
+          : i
+      );
+      const newContent = makeCinnySpacesContent(mx, newItems);
+      localEchoSidebarItem(parseSidebar(mx, orphanSpaces, newContent));
+      mx.setAccountData(AccountDataEvent.CinnySpaces, newContent);
+      requestClose();
+    };
+
+    return (
+      <Menu ref={ref} style={{ maxWidth: toRem(200), width: '100vw' }}>
+        <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
+          {renaming ? (
+            <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
+              <Input
+                variant="Background"
+                size="300"
+                placeholder="Folder name"
+                value={renameValue}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setRenameValue(e.target.value)}
+                onKeyDown={(e: React.KeyboardEvent) => {
+                  if (e.key === 'Enter') handleRenameConfirm();
+                  if (e.key === 'Escape') requestClose();
+                }}
+                autoFocus
+              />
+              <Button
+                variant="Primary"
+                fill="Solid"
+                size="300"
+                radii="300"
+                onClick={handleRenameConfirm}
+              >
+                <Text size="B300">Save</Text>
+              </Button>
+            </Box>
+          ) : (
+            <>
+              <MenuItem
+                onClick={() => setRenaming(true)}
+                size="300"
+                after={<Icon size="100" src={Icons.Pencil} />}
+                radii="300"
+              >
+                <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
+                  Rename Folder
+                </Text>
+              </MenuItem>
+              <MenuItem
+                onClick={() => { onUngroup(); requestClose(); }}
+                size="300"
+                after={<Icon size="100" src={Icons.Cross} />}
+                radii="300"
+              >
+                <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
+                  Ungroup
+                </Text>
+              </MenuItem>
+            </>
+          )}
+        </Box>
+      </Menu>
+    );
+  }
+);
 
 type ClosedSpaceFolderProps = {
   folder: ISidebarFolder;
@@ -545,10 +633,12 @@ function ClosedSpaceFolder({
   onOpen,
   onDragging,
   disabled,
-}: ClosedSpaceFolderProps) {
+  onUngroup,
+}: ClosedSpaceFolderProps & { onUngroup: (folderId: string) => void }) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
   const handlerRef = useRef<HTMLDivElement>(null);
+  const [menuAnchor, setMenuAnchor] = useState<RectCords>();
 
   const spaceDraggable: FolderDraggable = useMemo(() => ({ folder }), [folder]);
   useDraggableItem(spaceDraggable, handlerRef, onDragging);
@@ -571,7 +661,7 @@ function ClosedSpaceFolder({
         >
           <SidebarItemTooltip tooltip={disabled ? undefined : tooltipName}>
             {(tooltipRef) => (
-              <SidebarFolder data-id={folder.id} as="button" ref={tooltipRef} onClick={onOpen}>
+              <SidebarFolder data-id={folder.id} as="button" ref={tooltipRef} onClick={onOpen} onContextMenu={(evt: React.MouseEvent) => { evt.preventDefault(); const cords = (evt.currentTarget as HTMLElement).getBoundingClientRect(); setMenuAnchor((c) => c ? undefined : cords); }}>
                 {folder.content.map((sId) => {
                   const space = mx.getRoom(sId);
                   if (!space) return null;
@@ -598,6 +688,32 @@ function ClosedSpaceFolder({
             <SidebarItemBadge hasCount={unread.total > 0}>
               <UnreadBadge highlight={unread.highlight > 0} count={unread.total} />
             </SidebarItemBadge>
+          )}
+          {menuAnchor && (
+            <PopOut
+              anchor={menuAnchor}
+              position="Right"
+              align="Start"
+              content={
+                <FocusTrap
+                  focusTrapOptions={{
+                    initialFocus: false,
+                    returnFocusOnDeactivate: false,
+                    onDeactivate: () => setMenuAnchor(undefined),
+                    clickOutsideDeactivates: true,
+                    isKeyForward: (evt: KeyboardEvent) => evt.key === 'ArrowDown',
+                    isKeyBackward: (evt: KeyboardEvent) => evt.key === 'ArrowUp',
+                    escapeDeactivates: stopPropagation,
+                  }}
+                >
+                  <FolderMenu
+                    folder={folder}
+                    requestClose={() => setMenuAnchor(undefined)}
+                    onUngroup={() => onUngroup(folder.id)}
+                  />
+                </FocusTrap>
+              }
+            />
           )}
         </SidebarItem>
       )}
@@ -754,10 +870,19 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
 
   const selectedSpaceId = useSelectedSpace();
 
+  const { navigateRoom } = useRoomNavigate();
+
   const handleSpaceClick: MouseEventHandler<HTMLButtonElement> = (evt) => {
     const target = evt.currentTarget;
     const targetSpaceId = target.getAttribute('data-id');
     if (!targetSpaceId) return;
+
+    const room = mx.getRoom(targetSpaceId);
+    // Regular room pinned to sidebar — navigate directly
+    if (room && !isSpace(room)) {
+      navigateRoom(targetSpaceId);
+      return;
+    }
 
     const spacePath = getSpacePath(getCanonicalAliasOrRoomId(mx, targetSpaceId));
     if (screenSize === ScreenSize.Mobile) {
@@ -795,6 +920,23 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
       mx.setAccountData(AccountDataEvent.CinnySpaces, newSpacesContent);
     },
     [mx, sidebarItems, orphanSpaces, localEchoSidebarItem]
+  );
+
+  const handleUngroupFolder = useCallback(
+    (folderId: string) => {
+      const folder = sidebarItems.find(
+        (i): i is ISidebarFolder => typeof i === 'object' && i.id === folderId
+      );
+      if (!folder) return;
+      const newItems: SidebarItems = sidebarItems.flatMap((i) =>
+        typeof i === 'object' && i.id === folderId ? i.content : [i]
+      );
+      setOpenedFolder({ type: 'DELETE', id: folderId });
+      const newSpacesContent = makeCinnySpacesContent(mx, newItems);
+      localEchoSidebarItem(parseSidebar(mx, orphanSpaces, newSpacesContent));
+      mx.setAccountData(AccountDataEvent.CinnySpaces, newSpacesContent);
+    },
+    [mx, sidebarItems, orphanSpaces, localEchoSidebarItem, setOpenedFolder]
   );
 
   if (sidebarItems.length === 0) return null;
@@ -841,6 +983,7 @@ export function SpaceTabs({ scrollRef }: SpaceTabsProps) {
                 disabled={
                   typeof draggingItem === 'object' ? draggingItem.folder.id === item.id : false
                 }
+                onUngroup={handleUngroupFolder}
               />
             );
           }

@@ -40,7 +40,7 @@ export function CreateTab() {
 
   return (
     <SidebarItem active={createSelected}>
-      <SidebarItemTooltip tooltip="Add Space">
+      <SidebarItemTooltip tooltip="Add Space or Room">
         {(triggerRef) => (
           <PopOut
             anchor={menuCords}
@@ -92,7 +92,7 @@ export function CreateTab() {
                       <SettingTile before={<Icon size="400" src={Icons.Link} />}>
                         <Text size="H6">Join with Address</Text>
                         <Text size="T300" priority="300">
-                          Become a part of existing community.
+                          Join a space or room by address.
                         </Text>
                       </SettingTile>
                     </SequenceCard>
