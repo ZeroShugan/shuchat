@@ -115,6 +115,7 @@ const SpaceMenu = forwardRef<HTMLDivElement, SpaceMenuProps>(
     const openSpaceSettings = useOpenSpaceSettings();
 
     const [invitePrompt, setInvitePrompt] = useState(false);
+    const [moveToFolderOpen, setMoveToFolderOpen] = useState(false);
 
     const allChild = useSpaceChildren(
       allRoomsAtom,
@@ -221,7 +222,25 @@ const SpaceMenu = forwardRef<HTMLDivElement, SpaceMenuProps>(
               Space Settings
             </Text>
           </MenuItem>
+          <MenuItem
+            onClick={() => { setMoveToFolderOpen(true); }}
+            size="300"
+            after={<Icon size="100" src={Icons.Category} />}
+            radii="300"
+            aria-pressed={moveToFolderOpen}
+          >
+            <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
+              Move to Folder
+            </Text>
+          </MenuItem>
         </Box>
+        {moveToFolderOpen && (
+          <AddToFolderPrompt
+            roomId={room.roomId}
+            onDone={() => { setMoveToFolderOpen(false); requestClose(); }}
+            onCancel={() => setMoveToFolderOpen(false)}
+          />
+        )}
       </Menu>
     );
   }
@@ -451,7 +470,7 @@ function SpaceTab({
                 as="button"
                 data-id={space.roomId}
                 ref={triggerRef}
-                size={folder ? '200' : '400'}
+                size={folder ? '300' : '400'}
                 onClick={onClick}
                 onContextMenu={handleContextMenu}
               >
@@ -460,7 +479,7 @@ function SpaceTab({
                   src={getRoomAvatarUrl(mx, space, 96, useAuthentication) ?? undefined}
                   alt={space.name}
                   renderFallback={() => (
-                    <Text size={folder ? 'Inherit' : 'H4'}>{nameInitials(space.name, 2)}</Text>
+                    <Text size={folder ? 'H6' : 'H4'}>{nameInitials(space.name, 2)}</Text>
                   )}
                 />
               </SidebarAvatar>
@@ -529,9 +548,7 @@ function OpenedSpaceFolder({ folder, onClose, children }: OpenedSpaceFolderProps
           <Icon size="400" src={Icons.ChevronTop} filled />
         </IconButton>
       </SidebarAvatar>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px', width: '100%' }}>
-        {children}
-      </div>
+      {children}
       <SidebarFolderDropTarget ref={belowTargetRef} position="Bottom" />
     </SidebarFolder>
   );

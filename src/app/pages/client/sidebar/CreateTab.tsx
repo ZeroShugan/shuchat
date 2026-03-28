@@ -15,6 +15,7 @@ import {
 } from '../../pathUtils';
 import { useCreateSelected } from '../../../hooks/router/useCreateSelected';
 import { JoinAddressPrompt } from '../../../components/join-address-prompt';
+import { CreateFolderPrompt } from '../../../components/add-to-folder-prompt';
 import { _RoomSearchParams } from '../../paths';
 
 export function CreateTab() {
@@ -23,6 +24,7 @@ export function CreateTab() {
   const navigate = useNavigate();
   const [menuCords, setMenuCords] = useState<RectCords>();
   const [joinAddress, setJoinAddress] = useState(false);
+  const [createFolder, setCreateFolder] = useState(false);
 
   const handleMenu: MouseEventHandler<HTMLButtonElement> = (evt) => {
     setMenuCords(menuCords ? undefined : evt.currentTarget.getBoundingClientRect());
@@ -30,6 +32,11 @@ export function CreateTab() {
 
   const handleCreateSpace = () => {
     navigate(getCreatePath());
+    setMenuCords(undefined);
+  };
+
+  const handleCreateFolder = () => {
+    setCreateFolder(true);
     setMenuCords(undefined);
   };
 
@@ -96,6 +103,23 @@ export function CreateTab() {
                         </Text>
                       </SettingTile>
                     </SequenceCard>
+                    <SequenceCard
+                      style={{ padding: config.space.S300 }}
+                      variant="Surface"
+                      direction="Column"
+                      gap="100"
+                      radii="0"
+                      as="button"
+                      type="button"
+                      onClick={handleCreateFolder}
+                    >
+                      <SettingTile before={<Icon size="400" src={Icons.Category} />}>
+                        <Text size="H6">Create Folder</Text>
+                        <Text size="T300" priority="300">
+                          Group spaces and rooms into a folder.
+                        </Text>
+                      </SettingTile>
+                    </SequenceCard>
                   </Box>
                 </Menu>
               </FocusTrap>
@@ -124,6 +148,12 @@ export function CreateTab() {
                       : path
                   );
                 }}
+              />
+            )}
+            {createFolder && (
+              <CreateFolderPrompt
+                onDone={() => setCreateFolder(false)}
+                onCancel={() => setCreateFolder(false)}
               />
             )}
           </PopOut>
