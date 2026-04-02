@@ -9,11 +9,13 @@ import React, {
 import { Box, Icon, Icons, Input, Scroll, Spinner, Text, config, toRem } from 'folds';
 import { isKeyHotkey } from 'is-hotkey';
 import { editableActiveElement } from '../../utils/dom';
+import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useDebounce } from '../../hooks/useDebounce';
 import { mobileOrTablet } from '../../utils/user-agent';
 
 const GIPHY_KEY = 'kt1VsIL6e804ZVnPf49UkmsF8DKk5GIp';
 const FAV_KEY = 'shuchat_gif_favourites';
+const ACCOUNT_DATA_TYPE = 'im.shuchat.gif_favourites';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type GImg = { url: string; width: string; height: string };
@@ -190,9 +192,13 @@ type HomeViewProps = {
 function HomeView({ favs, trendingPreview, categories, catsLoading, onSelect }: HomeViewProps) {
   const tiles: Array<{ label: string; bgUrl?: string; tint?: string; target: string }> = [];
 
-  if (favs.length > 0) {
-    tiles.push({ label: '⭐ Favourites', bgUrl: favs[favs.length - 1].previewUrl, target: 'favourites' });
-  }
+  // Favourites tile — always shown; bgUrl set when favourites exist
+  tiles.push({
+    label: '⭐ Favourites',
+    bgUrl: favs.length > 0 ? favs[favs.length - 1].previewUrl : undefined,
+    tint: '#2a1a00',
+    target: 'favourites',
+  });
   tiles.push({ label: '🔥 Trending', bgUrl: trendingPreview, tint: '#1a1230', target: 'trending' });
 
   categories.forEach((cat) => {
@@ -242,6 +248,7 @@ export type GifContentProps = {
 };
 
 export function GifContent({ requestClose, onGifSelect, header, searchQuery: externalQuery }: GifContentProps) {
+  const mx = useMatrixClient();
   const [view, setView] = useState<'home' | 'browse' | 'search'>('home');
   const [browseTitle, setBrowseTitle] = useState('');
   const [browseTarget, setBrowseTarget] = useState<'trending' | 'favourites' | string>('');
@@ -252,6 +259,24 @@ export function GifContent({ requestClose, onGifSelect, header, searchQuery: ext
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [favourites, setFavourites] = useState<FavGif[]>(loadFavs);
+
+  // On mount: load from Matrix account data (persists across devices + cache clears)
+  // Falls back to localStorage data already loaded above
+  useEffect(() => {
+    try {
+      const event = mx.getAccountData(ACCOUNT_DATA_TYPE);
+      if (event) {
+        const content = event.getContent() as { favourites?: FavGif[] };
+        if (Array.isArray(content.favourites)) {
+          setFavourites(content.favourites);
+          saveFavs(content.favourites); // keep localStorage in sync
+        }
+      }
+    } catch {
+      // silently use localStorage fallback already loaded
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const favIds = useMemo(() => new Set(favourites.map((f) => f.id)), [favourites]);
   const inputRef = useRef<HTMLInputElement>(null);
   const isControlled = externalQuery !== undefined;
@@ -341,7 +366,10 @@ export function GifContent({ requestClose, onGifSelect, header, searchQuery: ext
         }];
         saveGifToLibrary(gif);
       }
-      saveFavs(next); return next;
+      saveFavs(next);
+      // Persist to Matrix account data so favourites survive cache clears and sync across devices
+      mx.setAccountData(ACCOUNT_DATA_TYPE, { favourites: next }).catch(() => {});
+      return next;
     });
   }, []);
 
@@ -409,8 +437,13 @@ export function GifContent({ requestClose, onGifSelect, header, searchQuery: ext
                 <Text size="T300" style={{ opacity: 0.6 }}>{fetchError}</Text>
               </Box>
             ) : browseGifs.length === 0 ? (
-              <Box justifyContent="Center" alignItems="Center" style={{ padding: '24px' }}>
-                <Text size="T300" style={{ opacity: 0.6 }}>No GIFs found</Text>
+              <Box justifyContent="Center" alignItems="Center" style={{ padding: '24px', flexDirection: 'column', gap: '8px' }}>
+                <Text size="T400" style={{ opacity: 0.7 }}>⭐</Text>
+                <Text size="T300" style={{ opacity: 0.6, textAlign: 'center' }}>
+                  {browseTarget === 'favourites'
+                    ? 'No favourites yet — hover a GIF and click the ★ to save it'
+                    : 'No GIFs found'}
+                </Text>
               </Box>
             ) : (
               <MasonryGrid gifs={browseGifs} favIds={favIds}

@@ -48,11 +48,26 @@ export const initClient = async (session: Session): Promise<MatrixClient> => {
   return mx;
 };
 
+const PRESENCE_STORAGE_KEY = 'shuchat-manual-presence';
+
 export const startClient = async (mx: MatrixClient) => {
+  // Restore manually selected presence before starting sync so Synapse
+  // sees the right set_presence from the very first /sync request.
+  const savedPresence = localStorage.getItem(PRESENCE_STORAGE_KEY);
+  if (savedPresence === 'online' || savedPresence === 'unavailable' || savedPresence === 'offline') {
+    mx.setSyncPresence(savedPresence as any);
+  }
+
   await mx.startClient({
     lazyLoadMembers: true,
     initialSyncLimit: 20,
   });
+
+  // After sync starts, push the saved presence to the server too.
+  if (savedPresence === 'online' || savedPresence === 'unavailable' || savedPresence === 'offline') {
+    try { await mx.setPresence({ presence: savedPresence as any }); }
+    catch { /* ignore — optimistic UI already correct via setSyncPresence */ }
+  }
 };
 
 export const clearCacheAndReload = async (mx: MatrixClient) => {

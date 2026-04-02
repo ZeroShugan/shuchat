@@ -10,6 +10,11 @@ import * as css from './Reply.css';
 import { MessageBadEncryptedContent, MessageDeletedContent, MessageFailedContent } from './content';
 import { scaleSystemEmoji } from '../../plugins/react-custom-html-parser';
 import { useRoomEvent } from '../../hooks/useRoomEvent';
+import parse, { Element, attributesToProps, domToReact } from 'html-react-parser';
+import { useMatrixClient } from '../../hooks/useMatrixClient';
+import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
+import { mxcUrlToHttp } from '../../utils/matrix';
+import { sanitizeCustomHtml } from '../../utils/sanitize';
 import colorMXID from '../../../util/colorMXID';
 import { GetMemberPowerTag } from '../../hooks/useMemberPowerTag';
 
@@ -84,7 +89,9 @@ export const Reply = as<'div', ReplyProps>(
     );
     const replyEvent = useRoomEvent(room, replyEventId, getFromLocalTimeline);
 
-    const { body } = replyEvent?.getContent() ?? {};
+    const mx = useMatrixClient();
+    const useAuthentication = useMediaAuthentication();
+    const { body, formatted_body: formattedBody, format } = replyEvent?.getContent() ?? {};
     const sender = replyEvent?.getSender();
     const powerTag = sender ? getMemberPowerTag?.(sender) : undefined;
     const tagColor = powerTag?.color ? accessibleTagColors?.get(powerTag.color) : undefined;
@@ -98,7 +105,50 @@ export const Reply = as<'div', ReplyProps>(
     );
 
     const badEncryption = replyEvent?.getContent().msgtype === 'm.bad.encrypted';
-    const bodyJSX = body ? scaleSystemEmoji(trimReplyFromBody(body)) : fallbackBody;
+    let bodyJSX: React.ReactNode;
+    if (formattedBody && format === 'org.matrix.custom.html') {
+      // Parse formatted_body HTML, rendering custom emoji as inline images
+      const sanitized = sanitizeCustomHtml(trimReplyFromBody(formattedBody));
+      const parsed = parse(sanitized, {
+        replace(domNode) {
+          if (domNode instanceof Element) {
+            if (
+              domNode.name === 'img' &&
+              domNode.attribs['data-mx-emoticon'] !== undefined
+            ) {
+              const src = domNode.attribs.src ?? '';
+              const alt = domNode.attribs.alt ?? '';
+              const httpUrl = src.startsWith('mxc://')
+                ? mxcUrlToHttp(mx, src, useAuthentication) ?? src
+                : src;
+              return (
+                <img
+                  src={httpUrl}
+                  alt={alt}
+                  title={alt}
+                  style={{ height: '1.2em', verticalAlign: 'text-bottom', display: 'inline' }}
+                />
+              );
+            }
+            // Strip other block-level / unknown tags — just render their children as text
+            if (['br', 'p', 'div', 'span', 'strong', 'em', 'b', 'i', 'del', 'code', 'pre', 'a', 'blockquote', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'].includes(domNode.name)) {
+              return <>{domToReact(domNode.children as any, {})}</>;
+            }
+          }
+          return undefined;
+        },
+      });
+      bodyJSX = parsed;
+    } else if (body) {
+      // Fallback: strip raw HTML img tags (e.g. <img data-mx-emoticon ... alt="name">) → :name:
+      const stripped = trimReplyFromBody(body).replace(
+        /<img[^>]*data-mx-emoticon[^>]*alt="([^"]*)"[^>]*\/?>/gi,
+        ':$1:'
+      ).replace(/<[^>]+>/g, '');
+      bodyJSX = scaleSystemEmoji(stripped);
+    } else {
+      bodyJSX = fallbackBody;
+    }
 
     return (
       <Box direction="Row" gap="200" alignItems="Center" {...props} ref={ref}>

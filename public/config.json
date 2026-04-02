@@ -1,0 +1,21 @@
+{
+  "defaultHomeserver": 0,
+  "homeserverList": [
+    "shugan.dev",
+    "matrix.org",
+    "element.io"
+  ],
+  "allowCustomHomeservers": true,
+  "featuredCommunities": {
+    "openAsDefault": false,
+    "spaces": [],
+    "rooms": [],
+    "servers": [
+      "shugan.dev"
+    ]
+  },
+  "hashRouter": {
+    "enabled": false,
+    "basename": "/"
+  }
+}

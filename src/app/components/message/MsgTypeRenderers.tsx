@@ -2,7 +2,14 @@ import React, { CSSProperties, ReactNode } from 'react';
 import { Box, Chip, Icon, Icons, Text, toRem } from 'folds';
 import { IContent } from 'matrix-js-sdk';
 import { JUMBO_EMOJI_REG, URL_REG } from '../../utils/regex';
-import { trimReplyFromBody } from '../../utils/room';
+
+// Matches formatted_body that contains ONLY custom emoji <img data-mx-emoticon> tags
+const CUSTOM_EMOJI_ONLY_REG = /^(\s*<img\s[^>]*data-mx-emoticon[^>]*\/?>[\s\u200b]*)+$/i;
+function isCustomEmojiOnly(customBody?: string): boolean {
+  if (!customBody) return false;
+  return CUSTOM_EMOJI_ONLY_REG.test(trimReplyFromFormattedBody(customBody).trim());
+}
+import { trimReplyFromBody, trimReplyFromFormattedBody } from '../../utils/room';
 import { MessageTextBody } from './layout';
 import {
   MessageBadEncryptedContent,
@@ -88,7 +95,7 @@ export function MText({ edited, content, renderBody, renderUrlsPreview, style }:
     <>
       <MessageTextBody
         preWrap={typeof customBody !== 'string'}
-        jumboEmoji={JUMBO_EMOJI_REG.test(trimmedBody)}
+        jumboEmoji={JUMBO_EMOJI_REG.test(trimmedBody) || isCustomEmojiOnly(typeof customBody === 'string' ? customBody : undefined)}
         style={style}
       >
         {renderBody({
@@ -128,7 +135,7 @@ export function MEmote({
       <MessageTextBody
         emote
         preWrap={typeof customBody !== 'string'}
-        jumboEmoji={JUMBO_EMOJI_REG.test(trimmedBody)}
+        jumboEmoji={JUMBO_EMOJI_REG.test(trimmedBody) || isCustomEmojiOnly(typeof customBody === 'string' ? customBody : undefined)}
       >
         <b>{`${displayName} `}</b>
         {renderBody({
@@ -161,7 +168,7 @@ export function MNotice({ edited, content, renderBody, renderUrlsPreview }: MNot
       <MessageTextBody
         notice
         preWrap={typeof customBody !== 'string'}
-        jumboEmoji={JUMBO_EMOJI_REG.test(trimmedBody)}
+        jumboEmoji={JUMBO_EMOJI_REG.test(trimmedBody) || isCustomEmojiOnly(typeof customBody === 'string' ? customBody : undefined)}
       >
         {renderBody({
           body: trimmedBody,
@@ -195,10 +202,11 @@ export function MImage({ content, renderImageContent, outlined }: MImageProps) {
   if (typeof mxcUrl !== 'string') {
     return <BrokenContent />;
   }
-  const height = scaleYDimension(imgInfo?.w || 400, 400, imgInfo?.h || 400);
+  const rawHeight = scaleYDimension(imgInfo?.w || 400, 400, imgInfo?.h || 400);
+  const height = Math.min(rawHeight, 400);
 
   return (
-    <Attachment outlined={outlined}>
+    <Attachment outlined={outlined} style={{ backgroundColor: "transparent", boxShadow: "none" }}>
       <AttachmentBox
         style={{
           height: toRem(height < 48 ? 48 : height),

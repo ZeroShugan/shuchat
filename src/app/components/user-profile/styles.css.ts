@@ -22,8 +22,8 @@ export const UserHeroCover = style({
   height: '100%',
   width: '100%',
   objectFit: 'cover',
-  filter: 'blur(16px)',
-  transform: 'scale(2)',
+
+
 });
 
 export const UserHeroAvatarContainer = style({

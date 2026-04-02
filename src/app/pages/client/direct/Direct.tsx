@@ -7,6 +7,7 @@ import {
   Icon,
   IconButton,
   Icons,
+  Input,
   Menu,
   MenuItem,
   PopOut,
@@ -51,6 +52,9 @@ import {
   useRoomsNotificationPreferencesContext,
 } from '../../../hooks/useRoomsNotificationPreferences';
 import { useDirectCreateSelected } from '../../../hooks/router/useDirectSelected';
+import { UserPanel } from '../../../components/user-panel/UserPanel';
+import { VoiceStatusBar } from '../../../components/voice-status-bar/VoiceStatusBar';
+import { OwnProfileColumn } from '../../../components/own-profile-column/OwnProfileColumn';
 
 type DirectMenuProps = {
   requestClose: () => void;
@@ -183,6 +187,8 @@ export function Direct() {
   const noRoomToDisplay = directs.length === 0;
   const [closedCategories, setClosedCategories] = useAtom(useClosedNavCategoriesAtom());
 
+  const [searchQuery, setSearchQuery] = useState('');
+
   const sortedDirects = useMemo(() => {
     const items = Array.from(directs).sort(factoryRoomIdByActivity(mx));
     if (closedCategories.has(DEFAULT_CATEGORY_ID)) {
@@ -191,8 +197,18 @@ export function Direct() {
     return items;
   }, [mx, directs, closedCategories, roomToUnread, selectedRoomId]);
 
+  const filteredDirects = useMemo(() => {
+    if (!searchQuery.trim()) return sortedDirects;
+    const q = searchQuery.toLowerCase();
+    return sortedDirects.filter((rId) => {
+      const room = mx.getRoom(rId);
+      if (!room) return false;
+      return room.name.toLowerCase().includes(q);
+    });
+  }, [mx, sortedDirects, searchQuery]);
+
   const virtualizer = useVirtualizer({
-    count: sortedDirects.length,
+    count: filteredDirects.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 38,
     overscan: 10,
@@ -203,8 +219,27 @@ export function Direct() {
   );
 
   return (
+    <OwnProfileColumn>
     <PageNav>
       <DirectHeader />
+      {!noRoomToDisplay && (
+        <Box
+          style={{
+            padding: `0 ${config.space.S300} ${config.space.S200}`,
+          }}
+        >
+          <Input
+            before={<Icon size="200" src={Icons.Search} />}
+            value={searchQuery}
+            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSearchQuery(e.target.value)}
+            placeholder="Search conversations..."
+            variant="Background"
+            size="300"
+            radii="300"
+            style={{ width: '100%' }}
+          />
+        </Box>
+      )}
       {noRoomToDisplay ? (
         <DirectEmpty />
       ) : (
@@ -238,6 +273,20 @@ export function Direct() {
                   Chats
                 </RoomNavCategoryButton>
               </NavCategoryHeader>
+              {filteredDirects.length === 0 && searchQuery.trim() && (
+                <Box
+                  direction="Column"
+                  alignItems="Center"
+                  style={{ padding: config.space.S300, gap: config.space.S100 }}
+                >
+                  <Text size="T300" priority="400" align="Center">
+                    No conversations matching
+                  </Text>
+                  <Text size="T300" priority="300" align="Center" truncate>
+                    &ldquo;{searchQuery}&rdquo;
+                  </Text>
+                </Box>
+              )}
               <div
                 style={{
                   position: 'relative',
@@ -245,7 +294,7 @@ export function Direct() {
                 }}
               >
                 {virtualizer.getVirtualItems().map((vItem) => {
-                  const roomId = sortedDirects[vItem.index];
+                  const roomId = filteredDirects[vItem.index];
                   const room = mx.getRoom(roomId);
                   if (!room) return null;
                   const selected = selectedRoomId === roomId;
@@ -275,6 +324,9 @@ export function Direct() {
           </Box>
         </PageNavContent>
       )}
+      <VoiceStatusBar />
+      <UserPanel />
     </PageNav>
+    </OwnProfileColumn>
   );
 }

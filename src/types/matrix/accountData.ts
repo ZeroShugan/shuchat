@@ -16,6 +16,9 @@ export enum AccountDataEvent {
   CrossSigningSelf = 'm.cross_signing.self',
   CrossSigningUser = 'm.cross_signing.user',
   MegolmBackupV1 = 'm.megolm_backup.v1',
+
+  ShuChatUserNotes = 'im.shuchat.user_notes',
+  ShuChatProfile = 'im.shuchat.profile',
 }
 
 export type MDirectContent = Record<string, string[]>;

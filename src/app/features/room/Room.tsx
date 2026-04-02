@@ -1,4 +1,4 @@
-import React, { useCallback, useRef } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import { Box, Line } from 'folds';
 import { useParams } from 'react-router-dom';
 import { isKeyHotkey } from 'is-hotkey';
@@ -20,6 +20,8 @@ import { CallControls } from '../call/CallControls';
 import { useCallEmbed, useCallJoined, useCallEmbedPlacementSync } from '../../hooks/useCallEmbed';
 import { useCallSession, useCallMembers } from '../../hooks/useCall';
 import { RoomViewHeader } from './RoomViewHeader';
+import { RoomSearchPanel } from './RoomSearchPanel';
+import { UserProfilePanel } from './UserProfilePanel';
 import { callChatAtom } from '../../state/callEmbed';
 import { CallChatView } from './CallChatView';
 
@@ -49,6 +51,13 @@ export function Room() {
 
   const callView = room.isCallRoom();
 
+  // Detect 2-person DM rooms to show profile panel
+  const myUserId = mx.getSafeUserId();
+  const isDM = !callView && room.getJoinedMemberCount() <= 2 && room.getJoinedMemberCount() > 0;
+  const dmOtherUserId = isDM
+    ? room.getJoinedMembers().find((m) => m.userId !== myUserId)?.userId
+    : undefined;
+
   // Track active call session in this room (works for both call rooms and DM rooms)
   const callSession = useCallSession(room);
   const callMembers = useCallMembers(room, callSession);
@@ -66,13 +75,22 @@ export function Room() {
   const dmCallContainerRef = useRef<HTMLDivElement>(null);
   useCallEmbedPlacementSync(dmCallContainerRef);
 
+  // in-room search panel
+  const [searchPanelTerm, setSearchPanelTerm] = useState<string | null>(null);
+  const handleRoomSearch = useCallback((term: string) => {
+    setSearchPanelTerm(term);
+  }, []);
+  const handleSearchPanelClose = useCallback(() => {
+    setSearchPanelTerm(null);
+  }, []);
+
   return (
     <PowerLevelsContextProvider value={powerLevels}>
       <Box grow="Yes">
         {/* Voice/call rooms: full CallView */}
         {callView && (screenSize === ScreenSize.Desktop || !chat) && (
           <Box grow="Yes" direction="Column">
-            <RoomViewHeader callView />
+            <RoomViewHeader callView onSearch={handleRoomSearch} searchPanelOpen={searchPanelTerm !== null} />
             <Box grow="Yes">
               <CallView />
             </Box>
@@ -82,7 +100,7 @@ export function Room() {
         {/* Chat rooms (including DMs) */}
         {!callView && (
           <Box grow="Yes" direction="Column">
-            <RoomViewHeader />
+            <RoomViewHeader onSearch={handleRoomSearch} searchPanelOpen={searchPanelTerm !== null} />
 
             {/* DM call area: top half when a call is active */}
             {showDMCallArea && (
@@ -129,11 +147,29 @@ export function Room() {
             <CallChatView />
           </>
         )}
-        {!callView && screenSize === ScreenSize.Desktop && isDrawer && (
+        {!callView && searchPanelTerm !== null && (
           <>
             <Line variant="Background" direction="Vertical" size="300" />
-            <MembersDrawer key={room.roomId} room={room} members={members} />
+            <RoomSearchPanel
+              key={room.roomId}
+              roomId={room.roomId}
+              initialTerm={searchPanelTerm}
+              onClose={handleSearchPanelClose}
+            />
           </>
+        )}
+        {!callView && screenSize === ScreenSize.Desktop && searchPanelTerm === null && (
+          dmOtherUserId ? (
+            <>
+              <Line variant="Background" direction="Vertical" size="300" />
+              <UserProfilePanel key={dmOtherUserId} userId={dmOtherUserId} roomId={room.roomId} />
+            </>
+          ) : isDrawer ? (
+            <>
+              <Line variant="Background" direction="Vertical" size="300" />
+              <MembersDrawer key={room.roomId} room={room} members={members} />
+            </>
+          ) : null
         )}
       </Box>
     </PowerLevelsContextProvider>

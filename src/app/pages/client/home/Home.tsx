@@ -44,6 +44,7 @@ import {
   useHomeSearchSelected,
 } from '../../../hooks/router/useHomeSelected';
 import { useHomeRooms } from './useHomeRooms';
+import { allRoomsAtom } from '../../../state/room-list/roomList';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
 import { VirtualTile } from '../../../components/virtualizer';
 import { RoomNavCategoryButton, RoomNavItem } from '../../../features/room-nav';
@@ -52,6 +53,9 @@ import { roomToUnreadAtom } from '../../../state/room/roomToUnread';
 import { useCategoryHandler } from '../../../hooks/useCategoryHandler';
 import { useNavToActivePathMapper } from '../../../hooks/useNavToActivePathMapper';
 import { PageNav, PageNavHeader, PageNavContent } from '../../../components/page';
+import { OwnProfileColumn } from '../../../components/own-profile-column/OwnProfileColumn';
+import { UserPanel } from '../../../components/user-panel/UserPanel';
+import { VoiceStatusBar } from '../../../components/voice-status-bar/VoiceStatusBar';
 import { useRoomsUnread } from '../../../state/hooks/unread';
 import { markAsRead } from '../../../utils/notifications';
 import { useClosedNavCategoriesAtom } from '../../../state/hooks/closedNavCategories';
@@ -194,11 +198,21 @@ function HomeEmpty() {
 }
 
 const DEFAULT_CATEGORY_ID = makeNavCategoryId('home', 'room');
+const VOICE_CATEGORY_ID = makeNavCategoryId('home', 'voice');
 export function Home() {
   const mx = useMatrixClient();
   useNavToActivePathMapper('home');
   const scrollRef = useRef<HTMLDivElement>(null);
   const rooms = useHomeRooms();
+  const allRoomIds = useAtomValue(allRoomsAtom);
+  const voiceRooms = useMemo(
+    () => allRoomIds.filter((id) => mx.getRoom(id)?.isCallRoom()),
+    [mx, allRoomIds]
+  );
+  const sortedVoiceRooms = useMemo(
+    () => [...voiceRooms].sort(factoryRoomIdByAtoZ(mx)),
+    [mx, voiceRooms]
+  );
   const notificationPreferences = useRoomsNotificationPreferencesContext();
   const roomToUnread = useAtomValue(roomToUnreadAtom);
   const navigate = useNavigate();
@@ -233,6 +247,7 @@ export function Home() {
   );
 
   return (
+    <OwnProfileColumn>
     <PageNav>
       <HomeHeader />
       {noRoomToDisplay ? (
@@ -354,9 +369,38 @@ export function Home() {
                 })}
               </div>
             </NavCategory>
+            {sortedVoiceRooms.length > 0 && (
+            <NavCategory>
+              <NavCategoryHeader>
+                <RoomNavCategoryButton
+                  closed={closedCategories.has(VOICE_CATEGORY_ID)}
+                  data-category-id={VOICE_CATEGORY_ID}
+                  onClick={handleCategoryClick}
+                >
+                  Voice Channels
+                </RoomNavCategoryButton>
+              </NavCategoryHeader>
+              {!closedCategories.has(VOICE_CATEGORY_ID) && sortedVoiceRooms.map((roomId) => {
+                const room = mx.getRoom(roomId);
+                if (!room) return null;
+                return (
+                  <RoomNavItem
+                    key={roomId}
+                    room={room}
+                    selected={selectedRoomId === roomId}
+                    linkPath={getHomeRoomPath(getCanonicalAliasOrRoomId(mx, roomId))}
+                    notificationMode={getRoomNotificationMode(notificationPreferences, roomId)}
+                  />
+                );
+              })}
+            </NavCategory>
+            )}
           </Box>
         </PageNavContent>
       )}
+      <VoiceStatusBar />
+      <UserPanel />
     </PageNav>
+    </OwnProfileColumn>
   );
 }

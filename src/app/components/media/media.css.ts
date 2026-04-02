@@ -4,7 +4,8 @@ import { DefaultReset } from 'folds';
 export const Image = style([
   DefaultReset,
   {
-    objectFit: 'cover',
+    objectFit: 'contain',
+    objectPosition: 'left center',
     width: '100%',
     height: '100%',
   },

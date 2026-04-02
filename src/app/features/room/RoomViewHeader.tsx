@@ -1,4 +1,4 @@
-import React, { MouseEventHandler, forwardRef, useState } from 'react';
+import React, { MouseEventHandler, forwardRef, useState, useRef, useCallback } from 'react';
 import FocusTrap from 'focus-trap-react';
 import {
   Box,
@@ -259,7 +259,7 @@ const RoomMenu = forwardRef<HTMLDivElement, RoomMenuProps>(({ room, requestClose
   );
 });
 
-export function RoomViewHeader({ callView }: { callView?: boolean }) {
+export function RoomViewHeader({ callView, onSearch, searchPanelOpen }: { callView?: boolean; onSearch?: (term: string) => void; searchPanelOpen?: boolean }) {
   const navigate = useNavigate();
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
@@ -307,15 +307,33 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
 
   const [peopleDrawer, setPeopleDrawer] = useSetting(settingsAtom, 'isPeopleDrawer');
 
-  const handleSearchClick = () => {
+  const handleSearchClick = useCallback((term?: string) => {
+    if (onSearch && term) {
+      onSearch(term);
+      return;
+    }
     const searchParams: _SearchPathSearchParams = {
       rooms: room.roomId,
+      ...(term ? { term } : {}),
     };
     const path = space
       ? getSpaceSearchPath(getCanonicalAliasOrRoomId(mx, space.roomId))
       : getHomeSearchPath();
     navigate(withSearchParam(path, searchParams));
-  };
+  }, [onSearch, room.roomId, space, mx, navigate]);
+
+  const [headerSearchVal, setHeaderSearchVal] = React.useState('');
+  const [showHeaderFilter, setShowHeaderFilter] = React.useState(false);
+  const headerSearchRef = useRef<HTMLInputElement>(null);
+
+  const handleHeaderFilterSelect = useCallback((prefix: string) => {
+    setHeaderSearchVal((prev) => {
+      const trimmed = prev.trim();
+      return trimmed ? `${trimmed} ${prefix}` : prefix;
+    });
+    setTimeout(() => { headerSearchRef.current?.focus(); }, 0);
+  }, []);
+
 
   const handleOpenMenu: MouseEventHandler<HTMLButtonElement> = (evt) => {
     setMenuAnchor(evt.currentTarget.getBoundingClientRect());
@@ -417,39 +435,8 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
           </Box>
         </Box>
 
-        <Box shrink="No">
-          {direct && !callEmbed?.roomId && !hasActiveCall && (
-            <TooltipProvider
-              position="Bottom"
-              offset={4}
-              tooltip={<Tooltip><Text>Start Voice Call</Text></Tooltip>}
-            >
-              {(triggerRef) => (
-                <IconButton fill="None" ref={triggerRef} onClick={handleDMCall}>
-                  <Icon size="400" src={Icons.Phone} />
-                </IconButton>
-              )}
-            </TooltipProvider>
-          )}
-          {direct && (myCallActive || hasActiveCall) && (
-            <TooltipProvider
-              position="Bottom"
-              offset={4}
-              tooltip={<Tooltip><Text>{myCallActive ? 'In Call' : 'Join Call'}</Text></Tooltip>}
-            >
-              {(triggerRef) => (
-                <IconButton
-                  fill="None"
-                  ref={triggerRef}
-                  onClick={myCallActive ? undefined : handleDMCall}
-                  style={{ color: '#3ba55d' }}
-                >
-                  <Icon size="400" src={Icons.Phone} filled />
-                </IconButton>
-              )}
-            </TooltipProvider>
-          )}
-          {direct && dmUserId && crossSigningActive && (
+        <Box shrink="No" alignItems="Center" gap="100">
+          {direct && dmUserId && crossSigningActive && !dmVerifStatus?.isVerified() && (
             <TooltipProvider
               position="Bottom"
               offset={4}
@@ -479,19 +466,33 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
               )}
             </TooltipProvider>
           )}
-          {!encryptedRoom && (
+          {direct && !callEmbed?.roomId && !hasActiveCall && (
             <TooltipProvider
               position="Bottom"
               offset={4}
-              tooltip={
-                <Tooltip>
-                  <Text>Search</Text>
-                </Tooltip>
-              }
+              tooltip={<Tooltip><Text>Start Voice Call</Text></Tooltip>}
             >
               {(triggerRef) => (
-                <IconButton fill="None" ref={triggerRef} onClick={handleSearchClick}>
-                  <Icon size="400" src={Icons.Search} />
+                <IconButton fill="None" ref={triggerRef} onClick={handleDMCall}>
+                  <Icon size="400" src={Icons.Phone} />
+                </IconButton>
+              )}
+            </TooltipProvider>
+          )}
+          {direct && (myCallActive || hasActiveCall) && (
+            <TooltipProvider
+              position="Bottom"
+              offset={4}
+              tooltip={<Tooltip><Text>{myCallActive ? 'In Call' : 'Join Call'}</Text></Tooltip>}
+            >
+              {(triggerRef) => (
+                <IconButton
+                  fill="None"
+                  ref={triggerRef}
+                  onClick={myCallActive ? undefined : handleDMCall}
+                  style={{ color: '#3ba55d' }}
+                >
+                  <Icon size="400" src={Icons.Phone} filled />
                 </IconButton>
               )}
             </TooltipProvider>
@@ -617,6 +618,92 @@ export function RoomViewHeader({ callView }: { callView?: boolean }) {
               </FocusTrap>
             }
           />
+          {/* Header search bar — hidden while search panel is open */}
+          {!searchPanelOpen && (
+            <div style={{ position: 'relative' }}>
+              <form
+                onSubmit={(e: React.FormEvent<HTMLFormElement>) => {
+                  e.preventDefault();
+                  const val = headerSearchVal.trim();
+                  if (val) {
+                    handleSearchClick(val);
+                    setHeaderSearchVal('');
+                    setShowHeaderFilter(false);
+                  }
+                }}
+                style={{ display: 'flex', alignItems: 'center' }}
+              >
+                <input
+                  ref={headerSearchRef}
+                  value={headerSearchVal}
+                  onChange={(e) => setHeaderSearchVal(e.target.value)}
+                  onFocus={() => setShowHeaderFilter(true)}
+                  onBlur={() => setTimeout(() => setShowHeaderFilter(false), 150)}
+                  type="text"
+                  placeholder="Search…"
+                  autoComplete="off"
+                  style={{
+                    background: 'rgba(128,128,128,0.15)',
+                    border: showHeaderFilter ? '1px solid rgba(128,128,128,0.4)' : '1px solid transparent',
+                    borderRadius: '16px',
+                    padding: '4px 10px 4px 28px',
+                    fontSize: '13px',
+                    width: '140px',
+                    color: 'inherit',
+                    outline: 'none',
+                    backgroundImage: 'url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%2714%27%20height%3D%2714%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27%23888%27%20stroke-width%3D%272%27%3E%3Ccircle%20cx%3D%2711%27%20cy%3D%2711%27%20r%3D%278%27/%3E%3Cline%20x1%3D%2721%27%20y1%3D%2721%27%20x2%3D%2716.65%27%20y2%3D%2716.65%27/%3E%3C/svg%3E")',
+                    backgroundRepeat: 'no-repeat',
+                    backgroundPosition: '8px center',
+                    transition: 'border-color 0.15s',
+                  }}
+                />
+              </form>
+              {showHeaderFilter && (
+                <div
+                  style={{
+                    position: 'fixed',
+                    width: '260px',
+                    background: 'var(--oq6d07a, #2a2b2f)',
+                    border: '1px solid rgba(128,128,128,0.25)',
+                    borderRadius: '8px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                    zIndex: 200,
+                    overflow: 'hidden',
+                  }}
+                  ref={(el) => {
+                    if (!el || !headerSearchRef.current) return;
+                    const rect = headerSearchRef.current.getBoundingClientRect();
+                    el.style.left = `${rect.right - 260}px`;
+                    el.style.top = `${rect.bottom + 4}px`;
+                  }}
+                >
+                  <div style={{ padding: '6px 12px 2px', fontSize: '10px', fontWeight: 700, opacity: 0.55, textTransform: 'uppercase', letterSpacing: '0.07em', color: 'inherit' }}>
+                    Filters — click to add
+                  </div>
+                  {([
+                    { icon: Icons.User,       label: 'From a specific user',             hint: 'from: username',               prefix: 'from:' },
+                    { icon: Icons.Attachment, label: 'Includes a specific type of data', hint: 'has: link · image · file', prefix: 'has:' },
+                    { icon: Icons.Mention,    label: 'Mentions a specific user',          hint: 'mentions: username',           prefix: 'mentions:' },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.prefix}
+                      type="button"
+                      onMouseDown={(e) => { e.preventDefault(); handleHeaderFilterSelect(opt.prefix); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: '10px', width: '100%', padding: '7px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'inherit', textAlign: 'left' }}
+                      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'rgba(128,128,128,0.15)'; }}
+                      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'none'; }}
+                    >
+                      <Icon src={opt.icon} size="200" style={{ opacity: 0.7, flexShrink: 0 }} />
+                      <div>
+                        <div style={{ fontSize: '13px', fontWeight: 600 }}>{opt.label}</div>
+                        <div style={{ fontSize: '11px', opacity: 0.5 }}>{opt.hint}</div>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </Box>
       </Box>
     </PageHeader>

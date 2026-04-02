@@ -95,8 +95,11 @@ export const ImageContent = as<'div', ImageContentProps>(
         const mediaUrl = mxcUrlToHttp(mx, url, useAuthentication);
         if (!mediaUrl) throw new Error('Invalid media URL');
         if (encInfo) {
-          const fileContent = await downloadEncryptedMedia(mediaUrl, (encBuf) =>
-            decryptFile(encBuf, mimeType ?? FALLBACK_MIMETYPE, encInfo)
+          const token = mx.getAccessToken() ?? undefined;
+          const fileContent = await downloadEncryptedMedia(
+            mediaUrl,
+            (encBuf) => decryptFile(encBuf, mimeType ?? FALLBACK_MIMETYPE, encInfo),
+            token
           );
           return URL.createObjectURL(fileContent);
         }

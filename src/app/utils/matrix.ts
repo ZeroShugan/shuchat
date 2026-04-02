@@ -296,18 +296,23 @@ export const mxcUrlToHttp = (
     useAuthentication
   );
 
-export const downloadMedia = async (src: string): Promise<Blob> => {
-  // this request is authenticated by service worker
-  const res = await fetch(src, { method: 'GET' });
-  const blob = await res.blob();
-  return blob;
+export const downloadMedia = async (src: string, accessToken?: string): Promise<Blob> => {
+  // Build headers: prefer explicit token over service-worker injection
+  const headers: Record<string, string> = {};
+  if (accessToken && src.includes('/_matrix/client/v1/media/')) {
+    headers['Authorization'] = `Bearer ${accessToken}`;
+  }
+  const res = await fetch(src, { method: 'GET', headers });
+  if (!res.ok) throw new Error(`Media download failed with status ${res.status}`);
+  return res.blob();
 };
 
 export const downloadEncryptedMedia = async (
   src: string,
-  decryptContent: (buf: ArrayBuffer) => Promise<Blob>
+  decryptContent: (buf: ArrayBuffer) => Promise<Blob>,
+  accessToken?: string
 ): Promise<Blob> => {
-  const encryptedContent = await downloadMedia(src);
+  const encryptedContent = await downloadMedia(src, accessToken);
   const decryptedContent = await decryptContent(await encryptedContent.arrayBuffer());
 
   return decryptedContent;

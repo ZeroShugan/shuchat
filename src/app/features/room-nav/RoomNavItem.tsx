@@ -49,6 +49,8 @@ import { settingsAtom } from '../../state/settings';
 import { useOpenRoomSettings } from '../../state/hooks/roomSettings';
 import { useSpaceOptionally } from '../../hooks/useSpace';
 import { useOpenUserRoomProfile } from '../../state/hooks/userRoomProfile';
+import { useUserPresence } from '../../hooks/useUserPresence';
+import { AvatarPresence, PresenceBadge } from '../../components/presence';
 import {
   getRoomNotificationModeIcon,
   RoomNotificationMode,
@@ -499,6 +501,7 @@ export function RoomNavItem({
     ? room.getJoinedMembers().find((m) => m.userId !== myUserId2)?.userId
     : undefined;
   const navVerifStatus = useUserVerificationStatus(dmNavUserId);
+  const dmPresence = useUserPresence(dmNavUserId ?? '');
 
   const handleContextMenu: MouseEventHandler<HTMLElement> = (evt) => {
     evt.preventDefault();
@@ -625,6 +628,7 @@ export function RoomNavItem({
       <NavLink to={linkPath} onClick={room.isCallRoom() ? handleStartCall : undefined}>
         <NavItemContent>
           <Box as="span" grow="Yes" alignItems="Center" gap="200">
+            <AvatarPresence badge={direct && dmPresence ? <PresenceBadge presence={dmPresence.presence} size="200" /> : null}>
             <Avatar size="200" radii="400">
               {showAvatar ? (
                 <RoomAvatar
@@ -653,10 +657,16 @@ export function RoomNavItem({
                 />
               )}
             </Avatar>
-            <Box as="span" grow="Yes">
+            </AvatarPresence>
+            <Box as="span" grow="Yes" direction="Column" style={{ minWidth: 0 }}>
               <Text priority={unread ? '500' : '300'} as="span" size="Inherit" truncate>
                 {roomName}
               </Text>
+              {direct && dmPresence?.status && (
+                <Text as="span" size="T200" truncate style={{ opacity: 0.5, fontSize: '11px' }}>
+                  {dmPresence.status}
+                </Text>
+              )}
             </Box>
             {!optionsVisible && !unread && !selected && typingMember.length > 0 && (
               <Badge size="300" variant="Secondary" fill="Soft" radii="Pill" outlined>

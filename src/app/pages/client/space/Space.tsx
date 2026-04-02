@@ -57,6 +57,9 @@ import { useRoomName } from '../../../hooks/useRoomMeta';
 import { useSpaceJoinedHierarchy } from '../../../hooks/useSpaceHierarchy';
 import { allRoomsAtom } from '../../../state/room-list/roomList';
 import { PageNav, PageNavContent, PageNavHeader } from '../../../components/page';
+import { UserPanel } from '../../../components/user-panel/UserPanel';
+import { VoiceStatusBar } from '../../../components/voice-status-bar/VoiceStatusBar';
+import { OwnProfileColumn } from '../../../components/own-profile-column/OwnProfileColumn';
 import { usePowerLevels } from '../../../hooks/usePowerLevels';
 import { useRecursiveChildScopeFactory, useSpaceChildren } from '../../../state/hooks/roomList';
 import { roomToParentsAtom } from '../../../state/room/roomToParents';
@@ -389,6 +392,7 @@ function NotASpaceView({ room }: NotASpaceViewProps) {
   };
 
   return (
+    <OwnProfileColumn>
     <PageNav>
       <PageNavHeader>
         <Box alignItems="Center" grow="Yes" gap="300">
@@ -464,7 +468,10 @@ function NotASpaceView({ room }: NotASpaceViewProps) {
           />
         )}
       </PageNavContent>
+      <VoiceStatusBar />
+      <UserPanel />
     </PageNav>
+    </OwnProfileColumn>
   );
 }
 
@@ -539,6 +546,7 @@ export function Space() {
     getSpaceRoomPath(spaceIdOrAlias, getCanonicalAliasOrRoomId(mx, roomId));
 
   return (
+    <OwnProfileColumn>
     <PageNav>
       <SpaceHeader />
       <PageNavContent scrollRef={scrollRef}>
@@ -634,6 +642,9 @@ export function Space() {
           </NavCategory>
         </Box>
       </PageNavContent>
+      <VoiceStatusBar />
+      <UserPanel />
     </PageNav>
+    </OwnProfileColumn>
   );
 }
