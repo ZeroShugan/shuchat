@@ -28,6 +28,7 @@ import {
 } from '../../../hooks/useSecretStorage';
 import { useCrossSigningActive } from '../../../hooks/useCrossSigning';
 import { BackupRestoreTile } from '../../../components/BackupRestore';
+import { AllDevicesIsolationMode, OnlySignedDevicesIsolationMode } from 'matrix-js-sdk/lib/crypto-api';
 
 function DevicesPlaceholder() {
   return (
