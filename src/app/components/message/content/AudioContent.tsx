@@ -23,6 +23,8 @@ import {
   mxcUrlToHttp,
 } from '../../../utils/matrix';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
+import { useSetting } from '../../../state/hooks/settings';
+import { settingsAtom } from '../../../state/settings';
 
 const PLAY_TIME_THROTTLE_OPS = {
   wait: 500,
@@ -75,6 +77,12 @@ export function AudioContent({
   const { playing, setPlaying } = useMediaPlay(getAudioRef);
   const { seek } = useMediaSeek(getAudioRef);
   const { volume, mute, setMute, setVolume } = useMediaVolume(getAudioRef);
+  const [mediaVolume] = useSetting(settingsAtom, 'mediaVolume');
+  React.useEffect(() => {
+    const el = audioRef.current;
+    if (el) setVolume(mediaVolume ?? 0.8);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const handlePlayTimeCallback: PlayTimeCallback = useCallback((d, ct) => {
     setDuration(d);
     setCurrentTime(ct);

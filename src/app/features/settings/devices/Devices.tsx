@@ -1,11 +1,13 @@
 import React from 'react';
-import { Box, Text, IconButton, Icon, Icons, Scroll } from 'folds';
+import { Box, Text, IconButton, Icon, Icons, Scroll, Switch } from 'folds';
 import { Page, PageContent, PageHeader } from '../../../components/page';
 import { SequenceCard } from '../../../components/sequence-card';
 import { SequenceCardStyle } from '../styles.css';
 import { SettingTile } from '../../../components/setting-tile';
 import { useDeviceIds, useDeviceList, useSplitCurrentDevice } from '../../../hooks/useDeviceList';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
+import { useSetting } from '../../../state/hooks/settings';
+import { settingsAtom } from '../../../state/settings';
 import { LocalBackup } from './LocalBackup';
 import { DeviceLogoutBtn, DeviceKeyDetails, DeviceTile, DeviceTilePlaceholder } from './DeviceTile';
 import { OtherDevices } from './OtherDevices';
@@ -43,6 +45,19 @@ export function Devices({ requestClose }: DevicesProps) {
   const mx = useMatrixClient();
   const crypto = mx.getCrypto();
   const crossSigningActive = useCrossSigningActive();
+  const [shareKeysWith, setShareKeysWith] = useSetting(settingsAtom, 'shareKeysWith');
+
+  // Apply isolation mode whenever the setting changes
+  React.useEffect(() => {
+    if (!crypto) return;
+    if (shareKeysWith === 'cross-verified') {
+      crypto.setDeviceIsolationMode(new OnlySignedDevicesIsolationMode());
+    } else if (shareKeysWith === 'verified') {
+      crypto.setDeviceIsolationMode(new AllDevicesIsolationMode(true));
+    } else {
+      crypto.setDeviceIsolationMode(new AllDevicesIsolationMode(false));
+    }
+  }, [crypto, shareKeysWith]);
   const [devices, refreshDeviceList] = useDeviceList();
 
   const [currentDevice, otherDevices] = useSplitCurrentDevice(devices);
@@ -108,6 +123,30 @@ export function Devices({ requestClose }: DevicesProps) {
                           </Box>
                         )}
                       </>
+                    }
+                  />
+                  <SettingTile
+                    title="Share keys with…"
+                    description="Which devices should receive your encryption keys in encrypted chats?"
+                    after={
+                      <select
+                        value={shareKeysWith ?? 'all'}
+                        onChange={(e) => setShareKeysWith(e.target.value as any)}
+                        style={{
+                          background: 'var(--mx-surface-variant-container, #2b2d31)',
+                          color: 'inherit',
+                          border: '1px solid rgba(255,255,255,0.12)',
+                          borderRadius: 6,
+                          padding: '4px 8px',
+                          fontSize: 13,
+                          cursor: 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                      >
+                        <option value="all">All devices</option>
+                        <option value="verified">Verified devices</option>
+                        <option value="cross-verified">Cross-verified devices only</option>
+                      </select>
                     }
                   />
                 </SequenceCard>

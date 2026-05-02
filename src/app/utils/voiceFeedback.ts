@@ -9,7 +9,8 @@ function playTone(
   startTime: number,
   duration: number,
   volume = 0.35,
-  type: OscillatorType = 'sine'
+  type: OscillatorType = 'sine',
+  scale = 1
 ) {
   const osc = ctx.createOscillator();
   const gain = ctx.createGain();
@@ -19,8 +20,9 @@ function playTone(
   osc.frequency.value = frequency;
   // Soft attack + release envelope
   gain.gain.setValueAtTime(0, startTime);
-  gain.gain.linearRampToValueAtTime(volume, startTime + 0.008);
-  gain.gain.setValueAtTime(volume, startTime + duration - 0.012);
+  const v = volume * scale;
+  gain.gain.linearRampToValueAtTime(v, startTime + 0.008);
+  gain.gain.setValueAtTime(v, startTime + duration - 0.012);
   gain.gain.linearRampToValueAtTime(0, startTime + duration);
   osc.start(startTime);
   osc.stop(startTime + duration + 0.01);
@@ -31,20 +33,20 @@ function makeCtx(): AudioContext | null {
 }
 
 /** Mic muted — two descending tones (high → low) */
-export function playMuteSound(): void {
+export function playMuteSound(volumeScale = 1): void {
   const ctx = makeCtx(); if (!ctx) return;
   const t = ctx.currentTime;
-  playTone(ctx, 900, t,        0.07, 0.38);
-  playTone(ctx, 660, t + 0.08, 0.07, 0.30);
+  playTone(ctx, 900, t,        0.07, 0.38, 'sine', volumeScale);
+  playTone(ctx, 660, t + 0.08, 0.07, 0.30, 'sine', volumeScale);
   setTimeout(() => ctx.close(), 600);
 }
 
 /** Mic unmuted — two ascending tones (low → high) */
-export function playUnmuteSound(): void {
+export function playUnmuteSound(volumeScale = 1): void {
   const ctx = makeCtx(); if (!ctx) return;
   const t = ctx.currentTime;
-  playTone(ctx, 660, t,        0.07, 0.30);
-  playTone(ctx, 900, t + 0.08, 0.07, 0.38);
+  playTone(ctx, 660, t,        0.07, 0.30, 'sine', volumeScale);
+  playTone(ctx, 900, t + 0.08, 0.07, 0.38, 'sine', volumeScale);
   setTimeout(() => ctx.close(), 600);
 }
 
@@ -52,19 +54,19 @@ export function playUnmuteSound(): void {
  * Deafened — two lower descending tones.
  * Lower pitch than mic sounds so users can tell them apart.
  */
-export function playDeafenSound(): void {
+export function playDeafenSound(volumeScale = 1): void {
   const ctx = makeCtx(); if (!ctx) return;
   const t = ctx.currentTime;
-  playTone(ctx, 450, t,        0.09, 0.32);
-  playTone(ctx, 330, t + 0.10, 0.09, 0.25);
+  playTone(ctx, 450, t,        0.09, 0.32, 'sine', volumeScale);
+  playTone(ctx, 330, t + 0.10, 0.09, 0.25, 'sine', volumeScale);
   setTimeout(() => ctx.close(), 600);
 }
 
 /** Undeafened — two lower ascending tones */
-export function playUndeafenSound(): void {
+export function playUndeafenSound(volumeScale = 1): void {
   const ctx = makeCtx(); if (!ctx) return;
   const t = ctx.currentTime;
-  playTone(ctx, 330, t,        0.09, 0.25);
-  playTone(ctx, 450, t + 0.10, 0.09, 0.32);
+  playTone(ctx, 330, t,        0.09, 0.25, 'sine', volumeScale);
+  playTone(ctx, 450, t + 0.10, 0.09, 0.32, 'sine', volumeScale);
   setTimeout(() => ctx.close(), 600);
 }

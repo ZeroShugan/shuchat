@@ -36,6 +36,10 @@ export interface Settings {
 
   showNotifications: boolean;
   isNotificationSounds: boolean;
+  notificationVolume: number;  // app UI sounds 0.0–1.0
+  mediaVolume: number;          // chat audio/video default 0.0–1.0
+  voiceVolume: number;          // call voice 0.0–1.0
+  shareKeysWith: 'all' | 'verified' | 'cross-verified';  // device isolation mode
 
   hour24Clock: boolean;
   dateFormatString: string;
@@ -70,6 +74,10 @@ const defaultSettings: Settings = {
 
   showNotifications: true,
   isNotificationSounds: true,
+  notificationVolume: 0.5,
+  mediaVolume: 0.8,
+  voiceVolume: 1.0,
+  shareKeysWith: 'all',
 
   hour24Clock: false,
   dateFormatString: 'D MMM YYYY',

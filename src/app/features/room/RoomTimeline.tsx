@@ -50,7 +50,9 @@ import { Opts as LinkifyOpts } from 'linkifyjs';
 import { useTranslation } from 'react-i18next';
 import { eventWithShortcode, factoryEventSentBy, getMxIdLocalPart } from '../../utils/matrix';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
-import { useVirtualPaginator, ItemRange } from '../../hooks/useVirtualPaginator';
+import { useVirtualizer } from '@tanstack/react-virtual';
+import { estimateMessageHeight } from '../../lib/estimateMessageHeight';
+import { getMessageFont } from '../../lib/pretextMeasure';
 import { useAlive } from '../../hooks/useAlive';
 import { editableActiveElement, scrollToBottom } from '../../utils/dom';
 import {
@@ -107,6 +109,7 @@ import { GetContentCallback, MessageEvent, StateEvent } from '../../../types/mat
 import { useKeyDown } from '../../hooks/useKeyDown';
 import { useDocumentFocusChange } from '../../hooks/useDocumentFocusChange';
 import { RenderMessageContent } from '../../components/RenderMessageContent';
+import { StickerMessage } from '../../components/message/StickerMessage';
 import { Image } from '../../components/media';
 import { ImageViewer } from '../../components/image-viewer';
 import { roomToParentsAtom } from '../../state/room/roomToParents';
@@ -231,7 +234,7 @@ type RoomTimelineProps = {
   editor: Editor;
 };
 
-const PAGINATION_LIMIT = 80;
+const PAGINATION_LIMIT = 200;
 
 type Timeline = {
   linkedTimelines: EventTimeline[];
@@ -487,7 +490,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
 
   const imagePackRooms: Room[] = useImagePackRooms(room.roomId, roomToParents);
 
-  const [unreadInfo, setUnreadInfo] = useState(() => getRoomUnreadInfo(room, true));
+  const [unreadInfo, setUnreadInfo] = useState(() => getRoomUnreadInfo(room, false));
   const readUptoEventIdRef = useRef<string>();
   if (unreadInfo) {
     readUptoEventIdRef.current = unreadInfo.readUptoEventId;
@@ -547,6 +550,8 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   const rangeAtEnd = timeline.range.end === eventsLength;
   const atLiveEndRef = useRef(liveTimelineLinked && rangeAtEnd);
   atLiveEndRef.current = liveTimelineLinked && rangeAtEnd;
+  const liveTimelineLinkedRef = useRef(liveTimelineLinked);
+  liveTimelineLinkedRef.current = liveTimelineLinked;
 
   const handleTimelinePagination = useTimelinePagination(
     mx,
@@ -554,24 +559,139 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     setTimeline,
     PAGINATION_LIMIT
   );
+  // Ref so the scroll handler (registered once, empty deps) always calls
+  // the latest version rather than the stale closure from mount time.
+  const handleTimelinePaginationRef = useRef(handleTimelinePagination);
+  handleTimelinePaginationRef.current = handleTimelinePagination;
 
   const getScrollElement = useCallback(() => scrollRef.current, []);
 
-  const { getItems, scrollToItem, scrollToElement, observeBackAnchor, observeFrontAnchor } =
-    useVirtualPaginator({
-      count: eventsLength,
-      limit: PAGINATION_LIMIT,
-      range: timeline.range,
-      onRangeChange: useCallback((r) => setTimeline((cs) => ({ ...cs, range: r })), []),
-      getScrollElement,
-      getItemElement: useCallback(
-        (index: number) =>
-          (scrollRef.current?.querySelector(`[data-message-item="${index}"]`) as HTMLElement) ??
-          undefined,
-        []
-      ),
-      onEnd: handleTimelinePagination,
-    });
+  // Number of events in the current loaded range
+  const eventCount = timeline.range.end - timeline.range.start;
+
+
+  // Keep refs so estimateSize and getItemKey can read current timeline without
+  // re-creating the virtualizer on every range change
+  const timelineRef = useRef(timeline);
+  timelineRef.current = timeline;
+  const canPaginateBackRef = useRef(canPaginateBack);
+  canPaginateBackRef.current = canPaginateBack;
+  const eventsLengthRef = useRef(eventsLength);
+  eventsLengthRef.current = eventsLength;
+
+  const virtualizer = useVirtualizer({
+    count: eventCount,
+    getScrollElement,
+    // Stable key = measurement cache survives prepend
+    getItemKey: (relativeIndex) => {
+      const tl = timelineRef.current;
+      const absIdx = tl.range.start + relativeIndex;
+      const [evtTimeline, baseIdx] = getTimelineAndBaseIndex(tl.linkedTimelines, absIdx);
+      if (!evtTimeline) return absIdx;
+      const mEvt = getTimelineEvent(evtTimeline, getTimelineRelativeIndex(absIdx, baseIdx));
+      return mEvt?.getId() ?? absIdx;
+    },
+    estimateSize: (relativeIndex) => {
+      const tl = timelineRef.current;
+      const absIdx = tl.range.start + relativeIndex;
+      const [evtTimeline, baseIdx] = getTimelineAndBaseIndex(tl.linkedTimelines, absIdx);
+      if (!evtTimeline) return 56;
+      const mEvt = getTimelineEvent(evtTimeline, getTimelineRelativeIndex(absIdx, baseIdx));
+      if (!mEvt) return 56;
+      const font = scrollRef.current ? getMessageFont(scrollRef.current) : undefined;
+      const width = scrollRef.current?.clientWidth ?? 0;
+      return estimateMessageHeight(mEvt, width, font);
+    },
+    overscan: 40,
+  });
+
+
+  // Ref so beforeunload handler can access the virtualizer
+  const virtualizerRef = useRef(virtualizer);
+  virtualizerRef.current = virtualizer;
+
+  // Re-anchor to bottom when item measurements cause total height to grow.
+  // wasAtBottomRef (no debounce, set on every scroll event) gates this:
+  //   - User scrolled up → wasAtBottomRef=false → effect is a no-op
+  //   - Genuine measurement drift while at bottom → wasAtBottomRef=true → re-anchors
+  // No upper cap on distBottom — drift can be large (many events × underestimate).
+  //
+  // afterPrependRef correction: after backward pagination, real item heights are
+  // larger than estimates, so scrollHeight grows beyond our initial restoration.
+  // We track the baseline and apply incremental deltas to keep the user anchored.
+  const virtualizerTotalSize = virtualizer.getTotalSize();
+  useLayoutEffect(() => {
+    // Prepend drift correction takes priority: if we just prepended items and
+    // ResizeObserver is still measuring their real heights, correct the drift.
+    if (afterPrependRef.current) {
+      const scrollEl = scrollRef.current;
+      if (scrollEl) {
+        const { scrollTop, scrollHeight } = afterPrependRef.current;
+        const delta = scrollEl.scrollHeight - scrollHeight;
+        if (delta > 0.5) {
+          scrollEl.scrollTop = scrollTop + delta;
+          // Update baseline for the next correction cycle
+          afterPrependRef.current = { scrollTop: scrollEl.scrollTop, scrollHeight: scrollEl.scrollHeight };
+        } else {
+          // Heights have stabilized — correction complete
+          afterPrependRef.current = null;
+        }
+      }
+      return;
+    }
+
+    if (!atLiveEndRef.current) return;
+    if (!wasAtBottomRef.current) return;
+    const scrollEl = scrollRef.current;
+    if (!scrollEl) return;
+    const distBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.offsetHeight;
+    if (distBottom > 5) {
+      scrollToBottom(scrollEl);
+    }
+  }, [virtualizerTotalSize]);
+
+  // Ref for pending scroll-to-index after range changes
+  const scrollToItemRef = useRef<{
+    index: number;
+    opts?: { align?: 'start' | 'center' | 'end'; behavior?: 'smooth' | 'instant'; stopInView?: boolean };
+  }>();
+
+  // Helper: scroll to an absolute event index.
+  // STABLE (empty deps) — reads current values from refs so this function never
+  // recreates. Effects depending on this (focusItem, unreadInfo, scrollToItemRef)
+  // will only re-fire when THEIR own deps change, not on every sync/range update.
+  const scrollToAbsoluteIndex = useCallback(
+    (
+      absoluteIndex: number,
+      opts?: { align?: 'start' | 'center' | 'end'; behavior?: 'smooth' | 'instant'; stopInView?: boolean }
+    ): boolean => {
+      const range = timelineRef.current.range;
+      const evtCount = range.end - range.start;
+      const relativeIndex = absoluteIndex - range.start;
+      if (relativeIndex < 0 || relativeIndex >= evtCount) {
+        setTimeline((cs) => ({
+          ...cs,
+          range: {
+            start: Math.max(absoluteIndex - PAGINATION_LIMIT, 0),
+            end: Math.min(absoluteIndex + PAGINATION_LIMIT, eventsLengthRef.current),
+          },
+        }));
+        scrollToItemRef.current = { index: absoluteIndex, opts };
+        return true;
+      }
+      if (opts?.stopInView) {
+        const vRange = virtualizer.range ?? { startIndex: 0, endIndex: 0 };
+        if (relativeIndex >= vRange.startIndex && relativeIndex <= vRange.endIndex) return false;
+      }
+      virtualizer.scrollToIndex(relativeIndex, {
+        align: opts?.align ?? 'start',
+        behavior: opts?.behavior,
+      });
+      return true;
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [] // stable: all live values read from refs
+  );
 
   const loadEventTimeline = useEventTimelineLoader(
     mx,
@@ -625,7 +745,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
           }
 
           scrollToBottomRef.current.count += 1;
-          scrollToBottomRef.current.smooth = true;
+          scrollToBottomRef.current.smooth = false; // instant: avoids fighting user scroll
 
           setTimeline((ct) => ({
             ...ct,
@@ -636,7 +756,17 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
           }));
           return;
         }
-        setTimeline((ct) => ({ ...ct }));
+        // Sync range.end to the true eventsLength so bottom placeholders
+        // don't persist after a live event arrives while user is scrolled up.
+        // eventsLength is derived from the mutable SDK timeline objects, so
+        // getTimelinesEventsCount(ct.linkedTimelines) is always up-to-date.
+        setTimeline((ct) => ({
+          ...ct,
+          range: {
+            ...ct.range,
+            end: getTimelinesEventsCount(ct.linkedTimelines),
+          },
+        }));
         if (!unreadInfo) {
           setUnreadInfo(getRoomUnreadInfo(room));
         }
@@ -656,7 +786,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         evtTimeline && getEventIdAbsoluteIndex(timeline.linkedTimelines, evtTimeline, evtId);
 
       if (typeof absoluteIndex === 'number') {
-        const scrolled = scrollToItem(absoluteIndex, {
+        const scrolled = scrollToAbsoluteIndex(absoluteIndex, {
           behavior: 'smooth',
           align: 'center',
           stopInView: true,
@@ -672,7 +802,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         loadEventTimeline(evtId);
       }
     },
-    [room, timeline, scrollToItem, loadEventTimeline]
+    [room, timeline, scrollToAbsoluteIndex, loadEventTimeline]
   );
 
   useLiveTimelineRefresh(
@@ -683,6 +813,150 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       }
     }, [room, liveTimelineLinked])
   );
+
+  // Scroll to pending item after range change
+  useLayoutEffect(() => {
+    if (!scrollToItemRef.current) return;
+    const { index, opts } = scrollToItemRef.current;
+    scrollToItemRef.current = undefined;
+    scrollToAbsoluteIndex(index, { ...(opts ?? {}), behavior: 'instant' });
+  }, [timeline.range, scrollToAbsoluteIndex]);
+
+  // Tracks whether the scroll position was genuinely at the bottom on the
+  // most recent scroll event. Updated immediately (no debounce) so the
+  // totalSize correction effect doesn't fire after backward pagination.
+  const wasAtBottomRef = useRef(true);
+
+  // Trigger Matrix timeline pagination when scroll approaches top or bottom.
+  // Registered ONCE — uses refs so re-registration never triggers mid-scroll.
+  const paginationCooldownRef = useRef(false);
+  useEffect(() => {
+    const scrollEl = getScrollElement();
+    if (!scrollEl) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollEl;
+      // Update immediately so totalSize effect has a fresh, no-debounce signal
+      wasAtBottomRef.current = scrollHeight - scrollTop - clientHeight < 5;
+      if (paginationCooldownRef.current) return;
+      const range = timelineRef.current.range;
+      const distTop = scrollTop;
+      const distBottom = scrollHeight - scrollTop - clientHeight;
+
+      // At the live end, measureElement height corrections cause tiny scrollTop
+      // fluctuations. No pagination is possible here — return early to avoid
+      // processing overhead and any edge-case feedback loops.
+      // Guard: distTop > 200 ensures we still allow backward pagination in very
+      // short rooms where both top and bottom are close simultaneously.
+      if (atLiveEndRef.current && distBottom < 250 && distTop > 200) return;
+
+      // Debug: open DevTools Console and filter "[scroll]" to diagnose issues
+      if (distTop < 500 || distBottom < 500) {
+        console.debug(
+          `[scroll] top=${Math.round(distTop)} bot=${Math.round(distBottom)}`,
+          `range=[${range.start},${range.end}/${eventsLengthRef.current}]`,
+          `atLiveEnd=${atLiveEndRef.current} liveLinked=${liveTimelineLinkedRef.current}`,
+          `canPaginateBack=${canPaginateBackRef.current}`
+        );
+      }
+
+      if (scrollTop < 1600) {
+        // Backward: expand window upward or fetch from server
+        if (range.start > 0) {
+          paginationCooldownRef.current = true;
+          // Snapshot current scroll metrics. After prepend we set
+          // scrollTop = savedScrollTop + (newScrollHeight - savedScrollHeight)
+          // to preserve exact viewport position without relying on estimates.
+          beforePrependRef.current = { scrollTop: scrollEl.scrollTop, scrollHeight: scrollEl.scrollHeight };
+          setTimeline((cs) => ({
+            ...cs,
+            range: { ...cs.range, start: Math.max(cs.range.start - PAGINATION_LIMIT, 0) },
+          }));
+          // Local state update is instant — short cooldown is fine
+          setTimeout(() => { paginationCooldownRef.current = false; }, 400);
+        } else if (canPaginateBackRef.current) {
+          paginationCooldownRef.current = true;
+          handleTimelinePaginationRef.current(true);
+          // Server fetch takes longer — keep longer cooldown
+          setTimeout(() => { paginationCooldownRef.current = false; }, 1500);
+        }
+        // If nothing to paginate, do NOT set cooldown (nothing happened)
+      } else if (!atLiveEndRef.current && scrollHeight - scrollTop - clientHeight < 400) {
+        // Forward: expand window downward — mutually exclusive with backward.
+        // Skip entirely when at live end (atLiveEndRef) — auto-scroll handles that.
+        const currentRange = timelineRef.current.range;
+        if (currentRange.end < eventsLengthRef.current) {
+          // Local window expansion (instant state update)
+          paginationCooldownRef.current = true;
+          setTimeline((cs) => ({
+            ...cs,
+            range: { ...cs.range, end: Math.min(cs.range.end + PAGINATION_LIMIT, eventsLengthRef.current) },
+          }));
+          setTimeout(() => { paginationCooldownRef.current = false; }, 400);
+        } else if (!liveTimelineLinkedRef.current) {
+          // At the edge of a timeline gap — fetch next chunk from server
+          paginationCooldownRef.current = true;
+          handleTimelinePaginationRef.current(false);
+          setTimeout(() => { paginationCooldownRef.current = false; }, 1500);
+        }
+      }
+    };
+
+    scrollEl.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollEl.removeEventListener('scroll', handleScroll);
+  // Registered once — values read from refs at scroll time
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Prepend scroll restoration: save raw scroll metrics just before the
+  // backward range expansion, then restore via scrollTop delta after render.
+  // More reliable than scrollToIndex — no dependency on estimated item heights.
+  const beforePrependRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
+  const prevRangeStartRef = useRef(timeline.range.start);
+  // afterPrependRef: baseline saved AFTER initial restoration so that subsequent
+  // measurement corrections (ResizeObserver growing real heights) can be tracked
+  // and applied as additional scrollTop adjustments, preventing viewport drift.
+  const afterPrependRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const prevStart = prevRangeStartRef.current;
+    const currStart = timeline.range.start;
+
+    if (currStart < prevStart && beforePrependRef.current) {
+      const scrollEl = scrollRef.current;
+      if (scrollEl) {
+        const { scrollTop, scrollHeight } = beforePrependRef.current;
+        const heightAdded = scrollEl.scrollHeight - scrollHeight;
+        if (heightAdded > 0) {
+          scrollEl.scrollTop = scrollTop + heightAdded;
+        }
+        // Save post-restoration baseline so the virtualizerTotalSize effect can
+        // keep correcting as ResizeObserver measures real (larger) item heights.
+        afterPrependRef.current = { scrollTop: scrollEl.scrollTop, scrollHeight: scrollEl.scrollHeight };
+      }
+      beforePrependRef.current = null;
+    }
+
+    prevRangeStartRef.current = currStart;
+
+    // After any range change, clear the cooldown so the next scroll event is
+    // not blocked. Also, if we're already near the top and there are still
+    // unloaded events above (e.g. after server recalibration shifted range.start
+    // upward), auto-expand immediately rather than waiting for user to scroll.
+    paginationCooldownRef.current = false;
+    const scrollEl = scrollRef.current;
+    if (scrollEl && scrollEl.scrollTop < 1600 && currStart > 0) {
+      paginationCooldownRef.current = true;
+      beforePrependRef.current = { scrollTop: scrollEl.scrollTop, scrollHeight: scrollEl.scrollHeight };
+      setTimeline((cs) => ({
+        ...cs,
+        range: { ...cs.range, start: Math.max(cs.range.start - PAGINATION_LIMIT, 0) },
+      }));
+      setTimeout(() => { paginationCooldownRef.current = false; }, 400);
+    }
+  }, [timeline.range.start]);
+
+
 
   // Stay at bottom when room editor resize
   useResizeObserver(
@@ -804,12 +1078,20 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     }
   }, [eventId, loadEventTimeline]);
 
+  // Eagerly pre-fetch server history on mount when local event cache is sparse.
+  // This ensures the user has enough scrollback buffer before they start
+  // scrolling up, reducing blank placeholder flashes.
+  useEffect(() => {
+    if (!eventId && canPaginateBack && eventsLength < PAGINATION_LIMIT * 3) {
+      handleTimelinePaginationRef.current(true);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Scroll to bottom on initial timeline load
   useLayoutEffect(() => {
     const scrollEl = scrollRef.current;
-    if (scrollEl) {
-      scrollToBottom(scrollEl);
-    }
+    if (scrollEl) scrollToBottom(scrollEl);
   }, []);
 
   // if live timeline is linked and unreadInfo change
@@ -822,19 +1104,19 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       const absoluteIndex =
         evtTimeline && getEventIdAbsoluteIndex(linkedTimelines, evtTimeline, readUptoEventId);
       if (absoluteIndex) {
-        scrollToItem(absoluteIndex, {
+        scrollToAbsoluteIndex(absoluteIndex, {
           behavior: 'instant',
           align: 'start',
           stopInView: true,
         });
       }
     }
-  }, [room, unreadInfo, scrollToItem]);
+  }, [room, unreadInfo, scrollToAbsoluteIndex]);
 
   // scroll to focused message
   useLayoutEffect(() => {
     if (focusItem && focusItem.scrollTo) {
-      scrollToItem(focusItem.index, {
+      scrollToAbsoluteIndex(focusItem.index, {
         behavior: 'instant',
         align: 'center',
         stopInView: true,
@@ -848,17 +1130,19 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         return currentItem;
       });
     }, 2000);
-  }, [alive, focusItem, scrollToItem]);
+  }, [alive, focusItem, scrollToAbsoluteIndex]);
 
   // scroll to bottom of timeline
   const scrollToBottomCount = scrollToBottomRef.current.count;
   useLayoutEffect(() => {
     if (scrollToBottomCount > 0) {
       const scrollEl = scrollRef.current;
-      if (scrollEl)
+      if (scrollEl) {
         scrollToBottom(scrollEl, scrollToBottomRef.current.smooth ? 'smooth' : 'instant');
+      }
     }
   }, [scrollToBottomCount]);
+
 
   // Remove unreadInfo on mark as read
   useEffect(() => {
@@ -874,14 +1158,19 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         (scrollRef.current?.querySelector(`[data-message-id="${editId}"]`) as HTMLElement) ??
         undefined;
       if (editMsgElement) {
-        scrollToElement(editMsgElement, {
-          align: 'center',
-          behavior: 'smooth',
-          stopInView: true,
-        });
+        const itemAttr = editMsgElement.getAttribute('data-message-item');
+        if (itemAttr) {
+          scrollToAbsoluteIndex(parseInt(itemAttr, 10), {
+            align: 'center',
+            behavior: 'smooth',
+            stopInView: true,
+          });
+        } else {
+          editMsgElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
       }
     }
-  }, [scrollToElement, editId]);
+  }, [scrollToAbsoluteIndex, editId]);
 
   const handleJumpToLatest = () => {
     if (eventId) {
@@ -1178,20 +1467,25 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             <EncryptedContent mEvent={mEvent}>
               {() => {
                 if (mEvent.isRedacted()) return <RedactedContent />;
-                if (mEvent.getType() === MessageEvent.Sticker)
+                if (mEvent.getType() === MessageEvent.Sticker) {
+                  const sc = mEvent.getContent();
                   return (
-                    <MSticker
-                      content={mEvent.getContent()}
-                      renderImageContent={(props) => (
-                        <ImageContent
-                          {...props}
-                          autoPlay={mediaAutoLoad}
-                          renderImage={(p) => <Image {...p} loading="lazy" />}
-                          renderViewer={(p) => <ImageViewer {...p} />}
-                        />
-                      )}
-                    />
+                    <StickerMessage mx={mx} mxcUrl={sc.file?.url ?? sc.url ?? ''}
+                      body={sc.body ?? 'sticker'} info={sc.info}>
+                      <MSticker
+                        content={sc}
+                        renderImageContent={(props) => (
+                          <ImageContent
+                            {...props}
+                            autoPlay={mediaAutoLoad}
+                            renderImage={(p) => <Image {...p} loading="lazy" />}
+                            renderViewer={(p) => <ImageViewer {...p} />}
+                          />
+                        )}
+                      />
+                    </StickerMessage>
                   );
+                }
                 if (mEvent.getType() === MessageEvent.RoomMessage) {
                   const editedEvent = getEditedEvent(mEventId, mEvent, timelineSet);
                   const getContent = (() =>
@@ -1641,6 +1935,26 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       return null;
     }
 
+    // When this is the first item in the virtual window, prevEvent is undefined
+    // (reset each render). Look up the immediately preceding event from the
+    // timeline so that collapsed/divider state is deterministic and does not
+    // depend on which items the virtualizer currently renders.
+    if (prevEvent === undefined && item > 0) {
+      const prevItem = item - 1;
+      const [pt, pbi] = getTimelineAndBaseIndex(timeline.linkedTimelines, prevItem);
+      if (pt) {
+        const pe = getTimelineEvent(pt, getTimelineRelativeIndex(prevItem, pbi));
+        if (pe) {
+          prevEvent = pe;
+          const ps = pe.getSender();
+          const isIgnored = !!(ps && ignoredUsersSet.has(ps));
+          const isRedacted = pe.isRedacted() && !showHiddenEvents;
+          const isReactionOrEdit = reactionOrEditEvent(pe);
+          isPrevRendered = !isIgnored && !isRedacted && !isReactionOrEdit;
+        }
+      }
+    }
+
     if (!newDivider && readUptoEventIdRef.current) {
       newDivider = prevEvent?.getId() === readUptoEventIdRef.current;
     }
@@ -1740,13 +2054,13 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
           </Chip>
         </TimelineFloat>
       )}
-      <Scroll ref={scrollRef} visibility="Hover">
+      <Scroll ref={scrollRef} visibility="Hover" style={{ overflowAnchor: 'none' }}>
         <Box
           direction="Column"
           justifyContent="End"
           style={{ minHeight: '100%', padding: `${config.space.S600} 0` }}
         >
-          {!canPaginateBack && rangeAtStart && getItems().length > 0 && (
+          {!canPaginateBack && rangeAtStart && eventCount > 0 && (
             <div
               style={{
                 padding: `${config.space.S700} ${config.space.S400} ${config.space.S600} ${
@@ -1760,68 +2074,54 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
           {(canPaginateBack || !rangeAtStart) &&
             (messageLayout === MessageLayout.Compact ? (
               <>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase ref={observeBackAnchor}>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
               </>
             ) : (
               <>
-                <MessageBase>
-                  <DefaultPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <DefaultPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase ref={observeBackAnchor}>
-                  <DefaultPlaceholder key={getItems().length} />
-                </MessageBase>
+                <MessageBase><DefaultPlaceholder /></MessageBase>
+                <MessageBase><DefaultPlaceholder /></MessageBase>
+                <MessageBase><DefaultPlaceholder /></MessageBase>
               </>
             ))}
 
-          {getItems().map(eventRenderer)}
+          {/* React-virtual message list */}
+          <div style={{ height: virtualizer.getTotalSize(), width: '100%', position: 'relative' }}>
+            {virtualizer.getVirtualItems().map((vItem) => (
+              <div
+                key={vItem.key}
+                data-index={vItem.index}
+                ref={virtualizer.measureElement}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  width: '100%',
+                  transform: `translateY(${vItem.start}px)`,
+                }}
+              >
+                {eventRenderer(timeline.range.start + vItem.index)}
+              </div>
+            ))}
+          </div>
 
-          {(!liveTimelineLinked || !rangeAtEnd) &&
+          {(!liveTimelineLinked || (!rangeAtEnd && !atBottom)) &&
             (messageLayout === MessageLayout.Compact ? (
               <>
-                <MessageBase ref={observeFrontAnchor}>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <CompactPlaceholder key={getItems().length} />
-                </MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
+                <MessageBase><CompactPlaceholder /></MessageBase>
               </>
             ) : (
               <>
-                <MessageBase ref={observeFrontAnchor}>
-                  <DefaultPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <DefaultPlaceholder key={getItems().length} />
-                </MessageBase>
-                <MessageBase>
-                  <DefaultPlaceholder key={getItems().length} />
-                </MessageBase>
+                <MessageBase><DefaultPlaceholder /></MessageBase>
+                <MessageBase><DefaultPlaceholder /></MessageBase>
+                <MessageBase><DefaultPlaceholder /></MessageBase>
               </>
             ))}
           <span ref={atBottomAnchorRef} />

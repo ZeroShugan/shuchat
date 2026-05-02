@@ -1,6 +1,7 @@
 import { ClientWidgetApi } from 'matrix-widget-api';
 import EventEmitter from 'events';
 import { CallControlState } from './CallControlState';
+import { getSettings } from '../../../app/state/settings';
 import { ElementMediaStateDetail, ElementMediaStatePayload, ElementWidgetActions } from './types';
 
 export enum CallControlEvent {
@@ -136,9 +137,23 @@ export class CallControl extends EventEmitter implements CallControlState {
   private setSound(sound: boolean): void {
     const callDocument = this.iframe.contentDocument ?? this.iframe.contentWindow?.document;
     if (callDocument) {
+      const voiceVol = getSettings().voiceVolume ?? 1;
       callDocument.querySelectorAll('audio').forEach((el) => {
         // eslint-disable-next-line no-param-reassign
         el.muted = !sound;
+        // eslint-disable-next-line no-param-reassign
+        el.volume = voiceVol;
+      });
+    }
+  }
+
+  public applyVoiceVolume(): void {
+    const callDocument = this.iframe.contentDocument ?? this.iframe.contentWindow?.document;
+    if (callDocument) {
+      const voiceVol = getSettings().voiceVolume ?? 1;
+      callDocument.querySelectorAll('audio').forEach((el) => {
+        // eslint-disable-next-line no-param-reassign
+        el.volume = voiceVol;
       });
     }
   }

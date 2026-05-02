@@ -91,6 +91,12 @@ export function SystemNotification() {
     settingsAtom,
     'isNotificationSounds'
   );
+  const [notificationVolume, setNotificationVolume] = useSetting(
+    settingsAtom,
+    'notificationVolume'
+  );
+  const [mediaVolume, setMediaVolume] = useSetting(settingsAtom, 'mediaVolume');
+  const [voiceVolume, setVoiceVolume] = useSetting(settingsAtom, 'voiceVolume');
 
   const requestNotificationPermission = () => {
     window.Notification.requestPermission();
@@ -143,6 +149,39 @@ export function SystemNotification() {
           title="Notification Sound"
           description="Play sound when new message arrive."
           after={<Switch value={isNotificationSounds} onChange={setIsNotificationSounds} />}
+        />
+        <SettingTile
+          title="App Sounds Volume"
+          description={`Notifications, call ring, mute/deafen — ${Math.round((notificationVolume ?? 0.5) * 100)}%`}
+          after={
+            <input type="range" min="0" max="1" step="0.05"
+              value={notificationVolume ?? 0.5}
+              onChange={(e) => setNotificationVolume(parseFloat(e.target.value))}
+              style={{ width: '140px', cursor: 'pointer' }}
+            />
+          }
+        />
+        <SettingTile
+          title="Voice Volume"
+          description={`People speaking in calls — ${Math.round((voiceVolume ?? 1) * 100)}%`}
+          after={
+            <input type="range" min="0" max="1" step="0.05"
+              value={voiceVolume ?? 1}
+              onChange={(e) => setVoiceVolume(parseFloat(e.target.value))}
+              style={{ width: '140px', cursor: 'pointer' }}
+            />
+          }
+        />
+        <SettingTile
+          title="Media Volume"
+          description={`Default for audio/video in chat — ${Math.round((mediaVolume ?? 0.8) * 100)}%`}
+          after={
+            <input type="range" min="0" max="1" step="0.05"
+              value={mediaVolume ?? 0.8}
+              onChange={(e) => setMediaVolume(parseFloat(e.target.value))}
+              style={{ width: '140px', cursor: 'pointer' }}
+            />
+          }
         />
       </SequenceCard>
       <SequenceCard

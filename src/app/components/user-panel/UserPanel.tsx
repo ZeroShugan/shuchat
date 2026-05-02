@@ -11,6 +11,8 @@ import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { getMxIdLocalPart } from '../../utils/matrix';
 import { nameInitials } from '../../utils/common';
 import { useCallPreferences } from '../../state/hooks/callPreferences';
+import { useSetting } from '../../state/hooks/settings';
+import { settingsAtom } from '../../state/settings';
 import { playMuteSound, playUnmuteSound, playDeafenSound, playUndeafenSound } from '../../utils/voiceFeedback';
 import { Settings } from '../../features/settings';
 import { Modal500 } from '../Modal500';
@@ -72,6 +74,7 @@ export function UserPanel() {
   };
 
   const { microphone, sound, toggleMicrophone, toggleSound } = useCallPreferences();
+  const [notificationVolume] = useSetting(settingsAtom, 'notificationVolume');
   const [showSettings, setShowSettings] = useState(false);
   const statusText = userPresence?.status || presenceLabel[presence];
 
@@ -144,14 +147,14 @@ export function UserPanel() {
 
         <Box shrink="No" alignItems="Center" style={{ gap: toRem(4) }}>
           <CtrlBtn
-            onClick={() => { if (microphone) playMuteSound(); else playUnmuteSound(); toggleMicrophone(); }}
+            onClick={() => { if (microphone) playMuteSound(notificationVolume); else playUnmuteSound(notificationVolume); toggleMicrophone(); }}
             muted={!microphone}
             title={microphone ? 'Mute microphone' : 'Unmute microphone'}
           >
             <Icon size="200" src={microphone ? Icons.Mic : Icons.MicMute} filled={!microphone} />
           </CtrlBtn>
           <CtrlBtn
-            onClick={() => { if (sound) playDeafenSound(); else playUndeafenSound(); toggleSound(); }}
+            onClick={() => { if (sound) playDeafenSound(notificationVolume); else playUndeafenSound(notificationVolume); toggleSound(); }}
             muted={!sound}
             title={sound ? 'Deafen' : 'Undeafen'}
           >

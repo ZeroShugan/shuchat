@@ -25,14 +25,17 @@ import { replaceSpaceWithDash, suffixRename } from '../../utils/common';
 import { getFileNameWithoutExt } from '../../utils/mimeTypes';
 import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
 
+const USER_PACK_LIMIT = 100;
+
 export type ImagePackContentProps = {
   imagePack: ImagePack;
   canEdit?: boolean;
+  isUserPack?: boolean;
   onUpdate?: (packContent: PackContent) => Promise<void>;
 };
 
 export const ImagePackContent = as<'div', ImagePackContentProps>(
-  ({ imagePack, canEdit, onUpdate, ...props }, ref) => {
+  ({ imagePack, canEdit, isUserPack, onUpdate, ...props }, ref) => {
     const useAuthentication = useMediaAuthentication();
 
     const [metaEditing, setMetaEditing] = useState(false);
@@ -41,6 +44,12 @@ export const ImagePackContent = as<'div', ImagePackContentProps>(
 
     const images = useMemo(() => Array.from(imagePack.images.collection.values()), [imagePack]);
     const [files, setFiles] = useState<File[]>([]);
+    // Count for personal pack limit
+    const totalImageCount = useMemo(() => {
+      const existing = images.length - deleteImages.size;
+      return existing + files.length + uploadedImages.length;
+    }, [images, deleteImages, files, uploadedImages]);
+    const isAtLimit = isUserPack === true && totalImageCount >= USER_PACK_LIMIT;
     const [uploadedImages, setUploadedImages] = useState<PackImageReader[]>([]);
     const [imagesEditing, setImagesEditing] = useState<Set<string>>(new Set());
     const [savedImages, setSavedImages] = useState<Map<string, PackImageReader>>(new Map());
@@ -346,14 +355,17 @@ export const ImagePackContent = as<'div', ImagePackContentProps>(
                   after={
                     <Button
                       variant="Secondary"
-                      fill="Soft"
+                      fill={isAtLimit ? "None" : "Soft"}
                       size="300"
                       radii="300"
                       type="button"
                       outlined
-                      onClick={() => pickFiles('image/*')}
+                      disabled={isAtLimit}
+                      onClick={() => !isAtLimit && pickFiles('image/*')}
                     >
-                      <Text size="B300">Select</Text>
+                      <Text size="B300">
+                        {isUserPack ? `${totalImageCount}/${USER_PACK_LIMIT}` : 'Select'}
+                      </Text>
                     </Button>
                   }
                 />

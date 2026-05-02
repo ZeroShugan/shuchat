@@ -15,6 +15,8 @@ import {
   domToReact,
 } from 'html-react-parser';
 import { MatrixClient } from 'matrix-js-sdk';
+import { useAddToUserPack, AddResult } from '../hooks/useAddToUserPack';
+import { ImageUsage } from '../plugins/custom-emoji/types';
 import classNames from 'classnames';
 import { Box, Chip, config, Header, Icon, IconButton, Icons, Scroll, Text, toRem } from 'folds';
 import { IntermediateRepresentation, Opts as LinkifyOpts, OptFn } from 'linkifyjs';
@@ -41,8 +43,28 @@ import {
 import { onEnterOrSpace } from '../utils/keyboard';
 import { copyToClipboard, tryDecodeURIComponent } from '../utils/dom';
 import { useTimeoutToggle } from '../hooks/useTimeoutToggle';
+import { hasImageFailed, markImageFailed } from '../utils/failedImageCache';
 
 const ReactPrism = lazy(() => import('./react-prism/ReactPrism'));
+
+// Wraps Matrix media <img> tags to prevent ORB retry loops.
+// When an authenticated media URL fails (ORB blocks it), the URL is cached.
+// On virtualizer remount, the component immediately returns null instead of
+// retrying the request, preventing the totalSize oscillation that causes
+// the visible "flickering between 2 scroll states" bug.
+function MatrixImg(props: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const [failed, setFailed] = useState(() => hasImageFailed(props.src));
+  if (failed) return null;
+  return (
+    <img
+      {...props}
+      onError={() => {
+        markImageFailed(props.src);
+        setFailed(true);
+      }}
+    />
+  );
+}
 
 const EMOJI_REG_G = new RegExp(`${URL_NEG_LB}(${EMOJI_PATTERN})`, 'g');
 
@@ -310,6 +332,74 @@ export function CodeBlock({
   );
 }
 
+// -- Inline emoji popover: click to add to your pack --------------------------
+const EMOJI_LABEL: Record<AddResult, string> = {
+  added: '✓ Added!', duplicate: 'Already in pack', limit: 'Pack full (100)',
+};
+const EMOJI_COLOR: Record<AddResult, string> = {
+  added: '#3ba55d', duplicate: '#3b82f6', limit: '#f0a500',
+};
+type EmoticonWithPopoverProps = {
+  mx: MatrixClient; src: string; htmlSrc: string; alt: string; className?: string;
+};
+function EmoticonWithPopover({ mx, src, htmlSrc, alt, className }: EmoticonWithPopoverProps) {
+  const [open, setOpen] = React.useState(false);
+  const { addImage, busy, result, resetResult } = useAddToUserPack(mx);
+  const ref = React.useRef<HTMLSpanElement>(null);
+  React.useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', h);
+    return () => document.removeEventListener('mousedown', h);
+  }, [open]);
+  const handleAdd = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (busy) return;
+    await addImage(src, alt, [ImageUsage.Emoticon]);
+    setTimeout(() => { resetResult(); setOpen(false); }, 1800);
+  };
+  return (
+    <span ref={ref} style={{ position: 'relative', display: 'inline-block', cursor: 'pointer' }}
+      onClick={() => setOpen((v) => !v)}>
+      <img src={htmlSrc} alt={alt} className={className}
+        style={{ display: 'inline', verticalAlign: 'middle' }} />
+      {open && (
+        <span onClick={(e) => e.stopPropagation()} style={{
+          position: 'absolute', bottom: 'calc(100% + 6px)', left: '50%',
+          transform: 'translateX(-50%)', background: '#1e2124',
+          border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8,
+          padding: '8px 10px', zIndex: 999,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
+          minWidth: 130, boxShadow: '0 4px 20px rgba(0,0,0,0.6)', pointerEvents: 'all',
+        }}>
+          <img src={htmlSrc} alt={alt}
+            style={{ width: 48, height: 48, objectFit: 'contain', borderRadius: 6 }} />
+          <span style={{ fontSize: 11, opacity: 0.55, textAlign: 'center', maxWidth: 120,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'inherit' }}>
+            {alt || src}
+          </span>
+          {result ? (
+            <span style={{ fontSize: 12, fontWeight: 700, color: EMOJI_COLOR[result] }}>
+              {EMOJI_LABEL[result]}
+            </span>
+          ) : (
+            <button onClick={handleAdd} disabled={busy} style={{
+              background: 'rgba(59,165,93,0.12)', border: '1px solid rgba(59,165,93,0.35)',
+              borderRadius: 6, color: '#3ba55d', fontSize: 12, fontFamily: 'inherit',
+              padding: '4px 12px', cursor: busy ? 'default' : 'pointer',
+              opacity: busy ? 0.6 : 1, whiteSpace: 'nowrap',
+            }}>
+              {busy ? '…' : '⭐ Add to my pack'}
+            </button>
+          )}
+        </span>
+      )}
+    </span>
+  );
+}
+
 export const getReactCustomHtmlParser = (
   mx: MatrixClient,
   roomId: string | undefined,
@@ -486,12 +576,18 @@ export const getReactCustomHtmlParser = (
             return (
               <span className={css.EmoticonBase}>
                 <span className={css.Emoticon()}>
-                  <img {...props} className={css.EmoticonImg} src={htmlSrc} />
+                  <EmoticonWithPopover
+                    mx={mx}
+                    src={props.src as string}
+                    htmlSrc={htmlSrc}
+                    alt={(props.alt as string) || ''}
+                    className={css.EmoticonImg}
+                  />
                 </span>
               </span>
             );
           }
-          if (htmlSrc) return <img {...props} className={css.Img} src={htmlSrc} />;
+          if (htmlSrc) return <MatrixImg {...props} className={css.Img} src={htmlSrc} />;
         }
       }
 

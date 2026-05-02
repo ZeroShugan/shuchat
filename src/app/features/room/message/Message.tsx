@@ -60,6 +60,7 @@ import {
 } from '../../../utils/matrix';
 import { MessageLayout, MessageSpacing } from '../../../state/settings';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
+import { useEventTrust, EventShieldColour } from '../../../hooks/useEventTrust';
 import { useRecentEmoji } from '../../../hooks/useRecentEmoji';
 import * as css from './styles.css';
 import { EventReaders } from '../../../components/event-readers';
@@ -721,6 +722,7 @@ export const Message = as<'div', MessageProps>(
     const mx = useMatrixClient();
     const useAuthentication = useMediaAuthentication();
     const senderId = mEvent.getSender() ?? '';
+    const trustColour = useEventTrust(mx, mEvent);
 
     const [hover, setHover] = useState(false);
     const { hoverProps } = useHover({ onHoverChange: setHover });
@@ -813,6 +815,13 @@ export const Message = as<'div', MessageProps>(
       </AvatarBase>
     );
 
+    const trustStyle: React.CSSProperties | undefined =
+      trustColour === EventShieldColour.RED
+        ? { color: 'rgba(248,113,113,0.9)' }
+        : trustColour === EventShieldColour.GREY
+        ? { color: 'rgba(217,119,6,0.9)' }
+        : undefined;
+
     const msgContentJSX = (
       <Box direction="Column" alignSelf="Start" style={{ maxWidth: '100%' }}>
         {reply}
@@ -829,7 +838,7 @@ export const Message = as<'div', MessageProps>(
             onCancel={() => onEditId()}
           />
         ) : (
-          children
+          <div style={trustStyle}>{children}</div>
         )}
         {reactions}
       </Box>
@@ -874,6 +883,13 @@ export const Message = as<'div', MessageProps>(
 
     const isThreadedMessage = mEvent.threadRootId !== undefined;
 
+    const containerStyle: React.CSSProperties | undefined =
+      trustColour === EventShieldColour.RED
+        ? { borderLeft: '3px solid rgba(248,113,113,0.6)', paddingLeft: 6 }
+        : trustColour === EventShieldColour.GREY
+        ? { borderLeft: '3px solid rgba(217,119,6,0.6)', paddingLeft: 6 }
+        : undefined;
+
     return (
       <MessageBase
         className={classNames(css.MessageBase, className, {
@@ -884,6 +900,7 @@ export const Message = as<'div', MessageProps>(
         collapse={collapse}
         highlight={highlight}
         selected={!!menuAnchor || !!emojiBoardAnchor}
+        style={containerStyle}
         {...props}
         {...hoverProps}
         {...focusWithinProps}

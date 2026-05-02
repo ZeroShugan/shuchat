@@ -51,18 +51,13 @@ export function UserHero({ userId, avatarUrl, bannerUrl, presence, onEditBanner,
       >
         {/* clip only the image, not the whole container */}
         <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', borderRadius: 'inherit' }}>
-          {(bannerUrl || avatarUrl) && (
+          {bannerUrl && (
             <img
               className={css.UserHeroCover}
-              src={bannerUrl || avatarUrl}
+              src={bannerUrl}
               alt={userId}
               draggable="false"
-              style={{
-                objectFit: 'cover',
-                width: '100%',
-                height: '100%',
-                ...(bannerUrl ? {} : { filter: 'blur(16px)', transform: 'scale(2)' }),
-              }}
+              style={{ objectFit: 'cover', width: '100%', height: '100%' }}
             />
           )}
         </div>

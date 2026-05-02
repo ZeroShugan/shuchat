@@ -1,6 +1,7 @@
 import { JoinRule } from 'matrix-js-sdk';
 import { AvatarFallback, AvatarImage, Icon, Icons, color } from 'folds';
 import React, { ComponentProps, ReactEventHandler, ReactNode, forwardRef, useState } from 'react';
+import { hasImageFailed, markImageFailed } from '../../utils/failedImageCache';
 import * as css from './RoomAvatar.css';
 import { getRoomIconSrc } from '../../utils/room';
 import colorMXID from '../../../util/colorMXID';
@@ -12,7 +13,8 @@ type RoomAvatarProps = {
   renderFallback: () => ReactNode;
 };
 export function RoomAvatar({ roomId, src, alt, renderFallback }: RoomAvatarProps) {
-  const [error, setError] = useState(false);
+  // Initialize from module-level cache so virtualizer remounts skip known-failed URLs
+  const [error, setError] = useState(() => hasImageFailed(src));
 
   const handleLoad: ReactEventHandler<HTMLImageElement> = (evt) => {
     evt.currentTarget.setAttribute('data-image-loaded', 'true');
@@ -34,7 +36,10 @@ export function RoomAvatar({ roomId, src, alt, renderFallback }: RoomAvatarProps
       className={css.RoomAvatar}
       src={src}
       alt={alt}
-      onError={() => setError(true)}
+      onError={() => {
+        markImageFailed(src);
+        setError(true);
+      }}
       onLoad={handleLoad}
       draggable={false}
     />

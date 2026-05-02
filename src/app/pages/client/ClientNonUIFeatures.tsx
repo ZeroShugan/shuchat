@@ -1,7 +1,8 @@
 import { useAtomValue } from 'jotai';
 import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RoomEvent, RoomEventHandlerMap } from 'matrix-js-sdk';
+import { RoomEvent, RoomEventHandlerMap, ClientEvent, SetPresence, UserEvent } from 'matrix-js-sdk';
+import { AllDevicesIsolationMode, OnlySignedDevicesIsolationMode } from 'matrix-js-sdk/lib/crypto-api';
 import { roomToUnreadAtom, unreadEqual, unreadInfoToUnread } from '../../state/room/roomToUnread';
 import LogoSVG from '../../../../public/res/svg/cinny.svg';
 import LogoUnreadSVG from '../../../../public/res/svg/cinny-unread.svg';
@@ -85,6 +86,7 @@ function InviteNotifications() {
   const navigate = useNavigate();
   const [showNotifications] = useSetting(settingsAtom, 'showNotifications');
   const [notificationSound] = useSetting(settingsAtom, 'isNotificationSounds');
+  const [notificationVolume] = useSetting(settingsAtom, 'notificationVolume');
 
   const notify = useCallback(
     (count: number) => {
@@ -105,8 +107,10 @@ function InviteNotifications() {
 
   const playSound = useCallback(() => {
     const audioElement = audioRef.current;
-    audioElement?.play();
-  }, []);
+    if (!audioElement) return;
+    audioElement.volume = notificationVolume;
+    audioElement.play();
+  }, [notificationVolume]);
 
   useEffect(() => {
     if (invites.length > perviousInviteLen && mx.getSyncState() === 'SYNCING') {
@@ -136,6 +140,7 @@ function MessageNotifications() {
   const useAuthentication = useMediaAuthentication();
   const [showNotifications] = useSetting(settingsAtom, 'showNotifications');
   const [notificationSound] = useSetting(settingsAtom, 'isNotificationSounds');
+  const [notificationVolume] = useSetting(settingsAtom, 'notificationVolume');
 
   const navigate = useNavigate();
   const notificationSelected = useInboxNotificationsSelected();
@@ -174,8 +179,10 @@ function MessageNotifications() {
 
   const playSound = useCallback(() => {
     const audioElement = audioRef.current;
-    audioElement?.play();
-  }, []);
+    if (!audioElement) return;
+    audioElement.volume = notificationVolume;
+    audioElement.play();
+  }, [notificationVolume]);
 
   useEffect(() => {
     const handleTimelineEvent: RoomEventHandlerMap[RoomEvent.Timeline] = (
@@ -253,6 +260,107 @@ function MessageNotifications() {
   );
 }
 
+
+
+/**
+ * Applies the user's stored device-isolation-mode preference every time the
+ * Matrix crypto module is available. The SDK does not persist this setting,
+ * so we re-apply it from settingsAtom on mount and after each reconnect.
+ */
+function CryptoIsolationEnforcer() {
+  const mx = useMatrixClient();
+  const [shareKeysWith] = useSetting(settingsAtom, 'shareKeysWith');
+
+  useEffect(() => {
+    const crypto = mx.getCrypto();
+    if (!crypto) return;
+    if (shareKeysWith === 'cross-verified') {
+      crypto.setDeviceIsolationMode(new OnlySignedDevicesIsolationMode());
+    } else if (shareKeysWith === 'verified') {
+      crypto.setDeviceIsolationMode(new AllDevicesIsolationMode(true));
+    } else {
+      crypto.setDeviceIsolationMode(new AllDevicesIsolationMode(false));
+    }
+  }, [mx, shareKeysWith]);
+
+  return null;
+}
+
+const PRESENCE_STORAGE_KEY = 'shuchat-manual-presence';
+// Rate-limit re-sends so we don't hammer Synapse (cooldown 15 s)
+let _presenceEnforceCooldown = 0;
+
+/**
+ * Keeps the user's manually chosen presence (offline/unavailable) sticky.
+ *
+ * The Matrix SDK silently resets setSyncPresence to Online when it reconnects
+ * or detects user activity. This component counters that by:
+ *   - Re-applying the saved presence immediately on mount and on every reconnect
+ *   - Watching own UserEvent.Presence — if the server pushes an unwanted 'online',
+ *     revert it immediately
+ */
+function ManualPresenceEnforcer() {
+  const mx = useMatrixClient();
+
+  useEffect(() => {
+    const saved = localStorage.getItem(PRESENCE_STORAGE_KEY) as
+      | 'online' | 'unavailable' | 'offline' | null;
+
+    // Only enforce for non-online choices — online is the default anyway
+    if (!saved || saved === 'online') return;
+
+    const syncPresenceMap: Record<string, SetPresence> = {
+      online: SetPresence.Online,
+      unavailable: SetPresence.Unavailable,
+      offline: SetPresence.Offline,
+    };
+
+    const applyManualPresence = () => {
+      // Re-apply setSyncPresence so the next /sync carries the right set_presence
+      mx.setSyncPresence(syncPresenceMap[saved]);
+
+      // Rate-limited explicit PUT so Synapse records it on the server too
+      const now = Date.now();
+      if (now - _presenceEnforceCooldown < 15_000) return;
+      _presenceEnforceCooldown = now;
+      mx.setPresence({ presence: saved as any }).catch(() => {});
+    };
+
+    // Apply on mount (handles page load / hot reconnect)
+    applyManualPresence();
+
+    // Re-apply every time the SDK reconnects (PREPARED = initial sync done,
+    // CATCHUP = reconnected after drop).  Both states reset the SDK internals.
+    const handleSync = (state: string) => {
+      if (state === 'PREPARED' || state === 'CATCHUP') {
+        applyManualPresence();
+      }
+    };
+    mx.on(ClientEvent.Sync, handleSync as any);
+
+    // Watch own presence events pushed by the server — revert if they conflict
+    const ownUser = mx.getUser(mx.getUserId() ?? '');
+    const handlePresence = () => {
+      if (!ownUser) return;
+      // If server pushed 'online' but user wants offline/unavailable → revert
+      if (ownUser.presence === 'online' && saved !== 'online') {
+        // Optimistically patch the SDK user object so UI doesn't flicker
+        (ownUser as any).presence = saved;
+        ownUser.emit(UserEvent.Presence, null as any, ownUser);
+        applyManualPresence();
+      }
+    };
+    ownUser?.on(UserEvent.Presence, handlePresence);
+
+    return () => {
+      mx.removeListener(ClientEvent.Sync, handleSync as any);
+      ownUser?.removeListener(UserEvent.Presence, handlePresence);
+    };
+  }, [mx]);
+
+  return null;
+}
+
 type ClientNonUIFeaturesProps = {
   children: ReactNode;
 };
@@ -260,6 +368,8 @@ type ClientNonUIFeaturesProps = {
 export function ClientNonUIFeatures({ children }: ClientNonUIFeaturesProps) {
   return (
     <>
+      <ManualPresenceEnforcer />
+      <CryptoIsolationEnforcer />
       <SystemEmojiFeature />
       <PageZoomFeature />
       <FaviconUpdater />

@@ -13,6 +13,10 @@ import { useExtendedProfile, setOwnExtendedProfile } from '../../hooks/useExtend
 import { useUserNotes } from '../../hooks/useUserNotes';
 import { MutualRoomsChip, ServerChip } from '../../components/user-profile/UserChips';
 import { useUserVerificationStatus } from '../../hooks/useUserVerificationStatus';
+import { useUserDevices, setDeviceBlocked, setDeviceLocallyTrusted } from '../../hooks/useUserDevices';
+import { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
+import { Switch } from 'folds';
+import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
 
 // ── Presence persistence ──────────────────────────────────────────────────
 const PRESENCE_STORAGE_KEY = 'shuchat-manual-presence';
@@ -178,6 +182,269 @@ function OwnProfileEditor({ userId, bannerUploading, avatarUploading }: OwnProfi
   );
 }
 
+
+// ── User device list (for other users' profiles) ─────────────────────────────
+type UserDeviceListProps = {
+  crypto: CryptoApi;
+  userId: string;
+  mx: import('matrix-js-sdk').MatrixClient;
+};
+function UserDeviceList({ crypto, userId, mx }: UserDeviceListProps) {
+  const [expanded, setExpanded] = React.useState(false);
+  const devices = useUserDevices(mx, crypto, userId);
+
+  const verifiedCount  = devices?.filter((d) => (d.crossSigned || d.localVerified) && !d.isBlocked).length ?? 0;
+  const blockedCount   = devices?.filter((d) => d.isBlocked).length ?? 0;
+  const unverifiedCount = devices?.filter((d) => !d.crossSigned && !d.localVerified && !d.isBlocked).length ?? 0;
+
+  return (
+    <Box direction="Column" gap="200">
+      {/* ── Clickable header ─────────────────────────────────────────── */}
+      <button
+        onClick={() => setExpanded((v) => !v)}
+        style={{
+          background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+          display: 'flex', flexDirection: 'column', gap: 4,
+          color: 'inherit', textAlign: 'left',
+        }}
+      >
+        <Box gap="100" alignItems="Center">
+          <Text size="T200" style={{ opacity: 0.55, textTransform: 'uppercase', fontSize: '10px', fontWeight: 700, letterSpacing: '0.07em' }}>
+            Encryption devices
+          </Text>
+          <span style={{ opacity: 0.4, fontSize: 10 }}>{expanded ? '▲' : '▼'}</span>
+        </Box>
+        <Text size="T200" style={{ opacity: 0.5, lineHeight: 1.4 }}>
+          Each device this person uses to send and receive messages.
+          Toggle off any device you want to stop receiving your messages.
+        </Text>
+        {/* Mini summary badges */}
+        {devices && (
+          <Box gap="200" style={{ marginTop: 2 }}>
+            {verifiedCount > 0 && (
+              <Text size="T200" style={{ color: '#3ba55d', fontSize: 11 }}>
+                ✓ {verifiedCount} verified
+              </Text>
+            )}
+            {unverifiedCount > 0 && (
+              <Text size="T200" style={{ color: '#f0a500', fontSize: 11 }}>
+                ⚠ {unverifiedCount} unverified
+              </Text>
+            )}
+            {blockedCount > 0 && (
+              <Text size="T200" style={{ color: '#f87171', fontSize: 11 }}>
+                ⊘ {blockedCount} blocked
+              </Text>
+            )}
+          </Box>
+        )}
+      </button>
+
+      {/* ── Expanded content ─────────────────────────────────────────── */}
+      {expanded && (
+        <Box direction="Column" gap="200">
+          {/* Legend */}
+          <Box
+            direction="Column"
+            gap="100"
+            style={{
+              background: 'rgba(255,255,255,0.03)',
+              border: '1px solid rgba(255,255,255,0.07)',
+              borderRadius: 6,
+              padding: '8px 10px',
+            }}
+          >
+            <Text size="T200" style={{ fontWeight: 700, opacity: 0.6, fontSize: 11 }}>What do the colours mean?</Text>
+            <Text size="T200" style={{ opacity: 0.7, lineHeight: 1.5 }}>
+              <span style={{ color: '#3ba55d', fontWeight: 600 }}>● Cross-signed</span>
+              {' — verified via a cross-signing ceremony, safest.'}
+            </Text>
+            <Text size="T200" style={{ opacity: 0.7, lineHeight: 1.5 }}>
+              <span style={{ color: '#3b82f6', fontWeight: 600 }}>● Locally trusted</span>
+              {' — you manually marked it as trusted.'}
+            </Text>
+            <Text size="T200" style={{ opacity: 0.7, lineHeight: 1.5 }}>
+              <span style={{ color: '#f0a500', fontWeight: 600 }}>● Unverified</span>
+              {' — unknown device, use with caution.'}
+            </Text>
+            <Text size="T200" style={{ opacity: 0.7, lineHeight: 1.5 }}>
+              <span style={{ color: '#f87171', fontWeight: 600 }}>● Blocked</span>
+              {' — your messages will NOT be delivered here.'}
+            </Text>
+          </Box>
+
+          {!devices && (
+            <Box gap="100" alignItems="Center">
+              <Spinner size="100" variant="Secondary" />
+              <Text size="T200" style={{ opacity: 0.5 }}>Loading…</Text>
+            </Box>
+          )}
+          {devices?.length === 0 && (
+            <Text size="T200" style={{ opacity: 0.5 }}>No devices found.</Text>
+          )}
+          {devices?.map((info) => (
+            <DeviceRow
+              key={info.device.deviceId}
+              crypto={crypto}
+              userId={userId}
+              info={info}
+            />
+          ))}
+        </Box>
+      )}
+    </Box>
+  );
+}
+
+type DeviceRowProps = {
+  crypto: CryptoApi;
+  userId: string;
+  info: import('../../hooks/useUserDevices').UserDeviceInfo;
+};
+function DeviceRow({ crypto, userId, info }: DeviceRowProps) {
+  const { device, crossSigned, localVerified, isBlocked } = info;
+
+  const [toggleState, doToggle] = useAsyncCallback(
+    useCallback(async (trusted: boolean) => {
+      if (trusted) {
+        // Un-block: revert to Unset (still unverified, just no longer blocked)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const olmMachine = (crypto as any).olmMachine;
+        if (olmMachine) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const RustSdk = await import('@matrix-org/matrix-sdk-crypto-wasm' as any);
+          const dev = await olmMachine.getDevice(
+            new RustSdk.UserId(userId), new RustSdk.DeviceId(device.deviceId)
+          );
+          if (dev) { try { await dev.setLocalTrust(RustSdk.LocalTrust.Unset); } finally { dev.free?.(); } }
+        } else {
+          await crypto.setDeviceVerified(userId, device.deviceId, false);
+        }
+      } else {
+        // Block via Rust OlmMachine (BlackListed)
+        await setDeviceBlocked(crypto, userId, device.deviceId, true);
+      }
+    }, [crypto, userId, device.deviceId])
+  );
+  const [verifyState, doVerify] = useAsyncCallback(
+    useCallback(async () => {
+      await setDeviceLocallyTrusted(crypto, userId, device.deviceId);
+    }, [crypto, userId, device.deviceId])
+  );
+  const loading = toggleState.status === AsyncStatus.Loading || verifyState.status === AsyncStatus.Loading;
+
+  // Determine label + colour
+  let label: string;
+  let labelColor: string;
+  if (isBlocked) {
+    label = 'Blocked';
+    labelColor = '#f87171';  // red
+  } else if (crossSigned) {
+    label = 'Cross-signed';
+    labelColor = '#3ba55d';  // green
+  } else if (localVerified) {
+    label = 'Locally verified';
+    labelColor = '#3b82f6';  // blue
+  } else {
+    label = 'Unverified';
+    labelColor = '#f0a500';  // amber
+  }
+
+  // Full fingerprint formatted as 3 rows of ~12 chars (groups of 4 separated by space)
+  const fingerprint = device.getFingerprint() ?? '';
+  const grouped = fingerprint.replace(/(.{4})/g, '$1 ').trim();
+  const third = Math.ceil(grouped.length / 3);
+  // Split on space boundaries near each third
+  const words = grouped.split(' ');
+  const perRow = Math.ceil(words.length / 3);
+  const fpRows = [
+    words.slice(0, perRow).join(' '),
+    words.slice(perRow, perRow * 2).join(' '),
+    words.slice(perRow * 2).join(' '),
+  ].filter(Boolean);
+
+  const toggleOn = !isBlocked;
+
+  return (
+    <Box
+      direction="Column"
+      gap="100"
+      style={{
+        background: 'rgba(255,255,255,0.04)',
+        borderRadius: 6,
+        padding: '8px 10px',
+        opacity: loading ? 0.6 : 1,
+      }}
+    >
+      <Box gap="200" alignItems="Center" justifyContent="SpaceBetween">
+        {/* Toggle — title explains what it does */}
+        <Box direction="Column" gap="100" alignItems="Center" style={{ flexShrink: 0 }}>
+          <Switch
+            value={toggleOn}
+            onChange={(val) => !loading && doToggle(val)}
+            title={toggleOn ? 'Click to block — this device will stop receiving your messages' : 'Click to unblock — this device will receive your messages again'}
+          />
+          <Text size="T200" style={{ fontSize: 9, opacity: 0.4, textAlign: 'center', lineHeight: 1 }}>
+            {loading ? '…' : toggleOn ? 'allowed' : 'blocked'}
+          </Text>
+        </Box>
+        {/* Label + device name */}
+        <Box direction="Column" gap="100" style={{ flex: 1, minWidth: 0 }}>
+          <Box gap="200" alignItems="Center">
+            <Text size="T200" style={{ color: labelColor, fontWeight: 700, fontSize: 11, flexShrink: 0 }}>
+              {label}
+            </Text>
+            <Text size="T200" style={{ opacity: 0.7, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {device.displayName || 'Unknown device'}
+            </Text>
+          </Box>
+          <Text size="T200" style={{ opacity: 0.4, fontFamily: 'monospace', fontSize: 10, letterSpacing: '0.02em' }}>
+            ID: {device.deviceId}
+          </Text>
+          {fpRows.map((row, i) => (
+            <Text key={i} size="T200" style={{ opacity: 0.35, fontFamily: 'monospace', fontSize: 10, letterSpacing: '0.04em' }}>
+              {row}
+            </Text>
+          ))}
+          {isBlocked && (
+            <Text size="T200" style={{ color: '#f87171', opacity: 0.7, fontSize: 11, marginTop: 2 }}>
+              ⚠ Your messages are not delivered to this device. Toggle on to restore.
+            </Text>
+          )}
+          {!isBlocked && !crossSigned && !localVerified && (
+            <Box gap="200" alignItems="Center" style={{ marginTop: 4, flexWrap: 'wrap' }}>
+              <Text size="T200" style={{ color: '#f0a500', opacity: 0.7, fontSize: 11 }}>
+                Not verified — identity unconfirmed.
+              </Text>
+              <button
+                type="button"
+                onClick={() => !loading && doVerify()}
+                disabled={loading}
+                title="I have manually confirmed this device belongs to this person (locally trusted, no cross-signing needed)"
+                style={{
+                  background: 'rgba(59,130,246,0.1)',
+                  border: '1px solid rgba(59,130,246,0.35)',
+                  borderRadius: 5,
+                  color: '#3b82f6',
+                  fontSize: 11,
+                  fontFamily: 'inherit',
+                  padding: '2px 8px',
+                  cursor: loading ? 'default' : 'pointer',
+                  opacity: loading ? 0.5 : 1,
+                  whiteSpace: 'nowrap',
+                  flexShrink: 0,
+                }}
+              >
+                ✓ Trust locally
+              </button>
+            </Box>
+          )}
+        </Box>
+      </Box>
+    </Box>
+  );
+}
+
 // ── Main panel ────────────────────────────────────────────────────────────────
 type UserProfilePanelProps = {
   userId: string;
@@ -189,6 +456,7 @@ export function UserProfilePanel({ userId, roomId, inColumn, onClose }: UserProf
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
   const myUserId = mx.getSafeUserId();
+  const crypto = mx.getCrypto();
   const isOwnProfile = userId === myUserId;
 
   const profile = useUserProfile(userId);
@@ -432,6 +700,12 @@ export function UserProfilePanel({ userId, roomId, inColumn, onClose }: UserProf
             </Box>
             <Line variant="Surface" size="300" />
             <PrivateNotes userId={userId} />
+            {crypto && (
+              <>
+                <Line variant="Surface" size="300" />
+                <UserDeviceList crypto={crypto} userId={userId} mx={mx} />
+              </>
+            )}
           </>
         )}
 

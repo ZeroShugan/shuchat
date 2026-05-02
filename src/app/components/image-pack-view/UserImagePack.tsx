@@ -18,5 +18,5 @@ export function UserImagePack() {
     [mx]
   );
 
-  return <ImagePackContent imagePack={imagePack ?? defaultPack} canEdit onUpdate={handleUpdate} />;
+  return <ImagePackContent imagePack={imagePack ?? defaultPack} canEdit isUserPack onUpdate={handleUpdate} />;
 }

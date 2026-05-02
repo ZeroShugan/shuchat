@@ -24,6 +24,7 @@ import {
   OverlayCenter,
   PopOut,
   Scroll,
+  Spinner,
   Text,
   config,
   toRem,
@@ -161,6 +162,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
       legacyUsernameColor || direct ? colorMXID(replyUserID ?? '') : replyPowerColor;
 
     const [uploadBoard, setUploadBoard] = useState(true);
+    const [gifUploading, setGifUploading] = useState(false);
     const [selectedFiles, setSelectedFiles] = useAtom(roomIdToUploadItemsAtomFamily(roomId));
     const uploadFamilyObserverAtom = createUploadFamilyObserverAtom(
       roomUploadAtomFamily,
@@ -447,12 +449,31 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
     };
 
     const handleGifSelect = useCallback(
-      (url: string, title: string, w: number, h: number) => {
+      async (url: string, title: string, w: number, h: number) => {
+        let sendUrl = url;
+        let size: number | undefined;
+        setGifUploading(true);
+        try {
+          // Download from external CDN and re-upload as mxc:// so all Matrix
+          // clients can load it (spec requires mxc:// in m.image url field).
+          const resp = await fetch(url);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            size = blob.size;
+            const file = new File([blob], 'image.gif', { type: 'image/gif' });
+            const { content_uri: mxcUrl } = await mx.uploadContent(file) as { content_uri: string };
+            sendUrl = mxcUrl;
+          }
+        } catch {
+          // Upload failed — fall back to external URL (better than nothing)
+        } finally {
+          setGifUploading(false);
+        }
         mx.sendMessage(roomId, {
           msgtype: MsgType.Image,
-          url,
+          url: sendUrl,
           body: title || 'GIF',
-          info: { mimetype: 'image/gif', w, h },
+          info: { mimetype: 'image/gif', w, h, ...(size !== undefined && { size }) },
         } as any);
       },
       [mx, roomId]
@@ -662,25 +683,36 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
                         />
                       </IconButton>
                     )}
-                    <IconButton
-                      aria-pressed={emojiBoardTab === EmojiBoardTab.GIF}
-                      onClick={() => setEmojiBoardTab(EmojiBoardTab.GIF)}
-                      variant="SurfaceVariant"
-                      size="300"
-                      radii="300"
-                      title="GIF"
-                    >
-                      <Text
-                        size="T200"
-                        style={{
-                          fontWeight: 700,
-                          lineHeight: 1,
-                          opacity: emojiBoardTab === EmojiBoardTab.GIF ? 1 : 0.7,
-                        }}
+                    {gifUploading ? (
+                      <Box
+                        alignItems="Center"
+                        justifyContent="Center"
+                        style={{ width: 32, height: 32, gap: 4, flexDirection: 'column' }}
+                        title="Uploading GIF…"
                       >
-                        GIF
-                      </Text>
-                    </IconButton>
+                        <Spinner size="100" variant="Secondary" />
+                      </Box>
+                    ) : (
+                      <IconButton
+                        aria-pressed={emojiBoardTab === EmojiBoardTab.GIF}
+                        onClick={() => setEmojiBoardTab(EmojiBoardTab.GIF)}
+                        variant="SurfaceVariant"
+                        size="300"
+                        radii="300"
+                        title="GIF"
+                      >
+                        <Text
+                          size="T200"
+                          style={{
+                            fontWeight: 700,
+                            lineHeight: 1,
+                            opacity: emojiBoardTab === EmojiBoardTab.GIF ? 1 : 0.7,
+                          }}
+                        >
+                          GIF
+                        </Text>
+                      </IconButton>
+                    )}
                     <IconButton
                       ref={emojiBtnRef}
                       aria-pressed={

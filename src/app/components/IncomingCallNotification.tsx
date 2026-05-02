@@ -11,6 +11,8 @@ import { useNavigate } from 'react-router-dom';
 import { useMediaAuthentication } from '../hooks/useMediaAuthentication';
 import { UserAvatar } from './user-avatar';
 import { useCallStart } from '../hooks/useCallEmbed';
+import { useSetting } from '../state/hooks/settings';
+import { settingsAtom } from '../state/settings';
 import { useCallPreferences } from '../state/hooks/callPreferences';
 
 type IncomingCall = {
@@ -28,6 +30,7 @@ export function IncomingCallNotification() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const startCall = useCallStart(true); // true = DM call
   const { microphone, video, sound } = useCallPreferences();
+  const [notificationVolume] = useSetting(settingsAtom, 'notificationVolume');
 
   const stopRing = useCallback(() => {
     const el = audioRef.current;
@@ -92,7 +95,7 @@ export function IncomingCallNotification() {
         : undefined;
 
       setIncoming({ roomId, callerId, callerName, callerAvatar });
-      audioRef.current?.play().catch(() => {});
+      if (audioRef.current) { audioRef.current.volume = notificationVolume ?? 0.5; audioRef.current.play().catch(() => {}); }
     };
 
     mx.on(RoomEvent.Timeline, handleEvent);
@@ -142,7 +145,7 @@ export function IncomingCallNotification() {
         : undefined;
 
       setIncoming({ roomId: _roomId, callerId, callerName, callerAvatar });
-      audioRef.current?.play().catch(() => {});
+      if (audioRef.current) { audioRef.current.volume = notificationVolume ?? 0.5; audioRef.current.play().catch(() => {}); }
     };
 
     mx.matrixRTC.on(MatrixRTCSessionManagerEvents.SessionStarted, handleSessionStarted);
