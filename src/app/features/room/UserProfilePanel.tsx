@@ -377,11 +377,13 @@ function DeviceRow({ crypto, userId, info }: DeviceRowProps) {
     <Box
       direction="Column"
       gap="100"
+      shrink="No"
       style={{
         background: 'rgba(255,255,255,0.04)',
         borderRadius: 6,
         padding: '8px 10px',
         opacity: loading ? 0.6 : 1,
+        flexShrink: 0,
       }}
     >
       <Box gap="200" alignItems="Center" justifyContent="SpaceBetween">
