@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Badge, color, Icon, Icons, Text } from 'folds';
 import {
   SidebarAvatar,
@@ -85,10 +85,57 @@ function UnverifiedIndicator() {
   );
 }
 
+function SetupBackupIndicator() {
+  const [settings, setSettings] = useState(false);
+  const [ready, setReady] = useState(false);
+  const closeSettings = () => setSettings(false);
+
+  // Cross-signing account-data can be briefly absent on cold load; wait a few
+  // seconds before nudging so already-set-up accounts don't flash this badge.
+  useEffect(() => {
+    const t = setTimeout(() => setReady(true), 5000);
+    return () => clearTimeout(t);
+  }, []);
+
+  if (!ready) return null;
+
+  return (
+    <>
+      <SidebarItem active={settings} className={css.UnverifiedTab}>
+        <SidebarItemTooltip tooltip="Set up Secure Backup">
+          {(triggerRef) => (
+            <SidebarAvatar
+              className={css.UnverifiedOtherAvatar}
+              as="button"
+              ref={triggerRef}
+              outlined
+              onClick={() => setSettings(true)}
+            >
+              <Icon style={{ color: color.Warning.Main }} src={Icons.ShieldUser} />
+            </SidebarAvatar>
+          )}
+        </SidebarItemTooltip>
+        <SidebarItemBadge hasCount>
+          <Badge variant="Warning" size="400" fill="Solid" radii="Pill" outlined={false}>
+            <Text as="span" size="L400">
+              !
+            </Text>
+          </Badge>
+        </SidebarItemBadge>
+      </SidebarItem>
+      {settings && (
+        <Modal500 requestClose={closeSettings}>
+          <Settings initialPage={SettingsPages.DevicesPage} requestClose={closeSettings} />
+        </Modal500>
+      )}
+    </>
+  );
+}
+
 export function UnverifiedTab() {
   const crossSigningActive = useCrossSigningActive();
 
-  if (!crossSigningActive) return null;
+  if (!crossSigningActive) return <SetupBackupIndicator />;
 
   return <UnverifiedIndicator />;
 }

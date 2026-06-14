@@ -1,6 +1,7 @@
 import { MatrixClient } from 'matrix-js-sdk';
 import { useMemo, useRef } from 'react';
 import { TYPING_TIMEOUT_MS } from '../state/typingMembers';
+import { getSettings } from '../state/settings';
 
 type TypingStatusUpdater = (typing: boolean) => void;
 
@@ -10,6 +11,8 @@ export const useTypingStatusUpdater = (mx: MatrixClient, roomId: string): Typing
   const sendTypingStatus: TypingStatusUpdater = useMemo(() => {
     statusSentTsRef.current = 0;
     return (typing) => {
+      // Invisible mode: "Hide Typing & Read Receipts" suppresses typing too.
+      if (getSettings().hideActivity) return;
       if (typing) {
         if (Date.now() - statusSentTsRef.current < TYPING_TIMEOUT_MS) {
           return;
