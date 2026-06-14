@@ -41,6 +41,7 @@ import { FavGif } from './gif-board/GifBoard';
 
 type RenderMessageContentProps = {
   displayName: string;
+  senderId?: string;
   msgType: string;
   ts: number;
   edited?: boolean;
@@ -61,8 +62,9 @@ type GifImageWrapperProps = {
   content: IImageContent;
   outlined?: boolean;
   mediaAutoLoad?: boolean;
+  isOwn?: boolean;
 };
-function GifImageWrapper({ content, outlined, mediaAutoLoad }: GifImageWrapperProps) {
+function GifImageWrapper({ content, outlined, mediaAutoLoad, isOwn }: GifImageWrapperProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
   const rawUrl = content.file?.url ?? content.url ?? '';
@@ -162,6 +164,7 @@ function GifImageWrapper({ content, outlined, mediaAutoLoad }: GifImageWrapperPr
         renderImageContent={(props) => (
           <ImageContent
             {...props}
+            isOwn={isOwn}
             autoPlay={mediaAutoLoad}
             renderImage={(p) => <Image {...p} loading="lazy" />}
             renderViewer={(p) => <ImageViewer {...p} />}
@@ -227,6 +230,7 @@ function GifImageWrapper({ content, outlined, mediaAutoLoad }: GifImageWrapperPr
 
 export function RenderMessageContent({
   displayName,
+  senderId,
   msgType,
   ts,
   edited,
@@ -238,6 +242,8 @@ export function RenderMessageContent({
   linkifyOpts,
   outlineAttachment,
 }: RenderMessageContentProps) {
+  const mx = useMatrixClient();
+  const isOwn = !!senderId && senderId === mx.getUserId();
   // Extract embeddable URLs from plain text body — used when urlPreview is disabled
   // (e.g. encrypted DMs). Pure client-side: no server calls.
   const getEmbedOnlyContent = (body: string): React.ReactNode => {
@@ -419,6 +425,7 @@ export function RenderMessageContent({
           content={getContent()}
           outlined={outlineAttachment}
           mediaAutoLoad={mediaAutoLoad}
+          isOwn={isOwn}
         />
         {renderCaption()}
       </>
@@ -436,6 +443,7 @@ export function RenderMessageContent({
               body={body}
               info={info}
               {...props}
+              isOwn={isOwn}
               renderThumbnail={
                 mediaAutoLoad
                   ? () => (

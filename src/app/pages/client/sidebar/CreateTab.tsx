@@ -16,6 +16,7 @@ import {
 import { useCreateSelected } from '../../../hooks/router/useCreateSelected';
 import { JoinAddressPrompt } from '../../../components/join-address-prompt';
 import { CreateFolderPrompt } from '../../../components/add-to-folder-prompt/CreateFolderPrompt';
+import { AddFriendPrompt } from '../../../components/add-friend-prompt';
 import { _RoomSearchParams } from '../../paths';
 
 export function CreateTab() {
@@ -25,6 +26,7 @@ export function CreateTab() {
   const [menuCords, setMenuCords] = useState<RectCords>();
   const [joinAddress, setJoinAddress] = useState(false);
   const [createFolder, setCreateFolder] = useState(false);
+  const [addFriend, setAddFriend] = useState(false);
 
   const handleMenu: MouseEventHandler<HTMLButtonElement> = (evt) => {
     setMenuCords(menuCords ? undefined : evt.currentTarget.getBoundingClientRect());
@@ -42,6 +44,11 @@ export function CreateTab() {
 
   const handleJoinWithAddress = () => {
     setJoinAddress(true);
+    setMenuCords(undefined);
+  };
+
+  const handleAddFriend = () => {
+    setAddFriend(true);
     setMenuCords(undefined);
   };
 
@@ -120,6 +127,23 @@ export function CreateTab() {
                         </Text>
                       </SettingTile>
                     </SequenceCard>
+                    <SequenceCard
+                      style={{ padding: config.space.S300 }}
+                      variant="Surface"
+                      direction="Column"
+                      gap="100"
+                      radii="0"
+                      as="button"
+                      type="button"
+                      onClick={handleAddFriend}
+                    >
+                      <SettingTile before={<Icon size="400" src={Icons.User} />}>
+                        <Text size="H6">Add Friend</Text>
+                        <Text size="T300" priority="300">
+                          Start a direct chat with someone by their user ID.
+                        </Text>
+                      </SettingTile>
+                    </SequenceCard>
                   </Box>
                 </Menu>
               </FocusTrap>
@@ -156,6 +180,7 @@ export function CreateTab() {
                 onCancel={() => setCreateFolder(false)}
               />
             )}
+            {addFriend && <AddFriendPrompt onCancel={() => setAddFriend(false)} />}
           </PopOut>
         )}
       </SidebarItemTooltip>

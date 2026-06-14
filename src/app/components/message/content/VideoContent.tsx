@@ -33,7 +33,7 @@ import {
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { validBlurHash } from '../../../utils/blurHash';
 import { useSetting } from '../../../state/hooks/settings';
-import { settingsAtom } from '../../../state/settings';
+import { settingsAtom, autoSpoilerActive } from '../../../state/settings';
 
 type RenderVideoProps = {
   title: string;
@@ -51,6 +51,7 @@ type VideoContentProps = {
   encInfo?: EncryptedAttachmentInfo;
   autoPlay?: boolean;
   markedAsSpoiler?: boolean;
+  isOwn?: boolean;
   spoilerReason?: string;
   renderThumbnail?: () => ReactNode;
   renderVideo: (props: RenderVideoProps) => ReactNode;
@@ -66,6 +67,7 @@ export const VideoContent = as<'div', VideoContentProps>(
       encInfo,
       autoPlay,
       markedAsSpoiler,
+      isOwn,
       spoilerReason,
       renderThumbnail,
       renderVideo,
@@ -77,10 +79,11 @@ export const VideoContent = as<'div', VideoContentProps>(
     const useAuthentication = useMediaAuthentication();
     const blurHash = validBlurHash(info.thumbnail_info?.[MATRIX_BLUR_HASH_PROPERTY_NAME]);
     const [autoSpoilerVideos] = useSetting(settingsAtom, 'autoSpoilerVideos');
+    const autoSpoiler = autoSpoilerActive(autoSpoilerVideos, isOwn ?? false);
 
     const [load, setLoad] = useState(false);
     const [error, setError] = useState(false);
-    const [blurred, setBlurred] = useState((markedAsSpoiler ?? false) || autoSpoilerVideos);
+    const [blurred, setBlurred] = useState((markedAsSpoiler ?? false) || autoSpoiler);
 
     const [srcState, loadSrc] = useAsyncCallback(
       useCallback(async () => {

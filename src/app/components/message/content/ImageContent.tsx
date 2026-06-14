@@ -32,7 +32,7 @@ import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { ModalWide } from '../../../styles/Modal.css';
 import { validBlurHash } from '../../../utils/blurHash';
 import { useSetting } from '../../../state/hooks/settings';
-import { settingsAtom } from '../../../state/settings';
+import { settingsAtom, autoSpoilerActive } from '../../../state/settings';
 
 type RenderViewerProps = {
   src: string;
@@ -56,6 +56,7 @@ export type ImageContentProps = {
   encInfo?: EncryptedAttachmentInfo;
   autoPlay?: boolean;
   markedAsSpoiler?: boolean;
+  isOwn?: boolean;
   spoilerReason?: string;
   renderViewer: (props: RenderViewerProps) => ReactNode;
   renderImage: (props: RenderImageProps) => ReactNode;
@@ -71,6 +72,7 @@ export const ImageContent = as<'div', ImageContentProps>(
       encInfo,
       autoPlay,
       markedAsSpoiler,
+      isOwn,
       spoilerReason,
       renderViewer,
       renderImage,
@@ -82,11 +84,16 @@ export const ImageContent = as<'div', ImageContentProps>(
     const useAuthentication = useMediaAuthentication();
     const blurHash = validBlurHash(info?.[MATRIX_BLUR_HASH_PROPERTY_NAME]);
     const [autoSpoilerImages] = useSetting(settingsAtom, 'autoSpoilerImages');
+    const [autoSpoilerGifs] = useSetting(settingsAtom, 'autoSpoilerGifs');
+    const autoSpoiler = autoSpoilerActive(
+      mimeType === 'image/gif' ? autoSpoilerGifs : autoSpoilerImages,
+      isOwn ?? false
+    );
 
     const [load, setLoad] = useState(false);
     const [error, setError] = useState(false);
     const [viewer, setViewer] = useState(false);
-    const [blurred, setBlurred] = useState((markedAsSpoiler ?? false) || autoSpoilerImages);
+    const [blurred, setBlurred] = useState((markedAsSpoiler ?? false) || autoSpoiler);
 
     const [srcState, loadSrc] = useAsyncCallback(
       useCallback(async () => {

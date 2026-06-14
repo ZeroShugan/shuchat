@@ -1,17 +1,46 @@
 import React from 'react';
-import { Box, Text, IconButton, Icon, Icons, Scroll, Switch } from 'folds';
+import { Box, Text, IconButton, Icon, Icons, Scroll } from 'folds';
 import { Page, PageContent, PageHeader } from '../../../components/page';
 import { SequenceCard } from '../../../components/sequence-card';
 import { SequenceCardStyle } from '../styles.css';
 import { SettingTile } from '../../../components/setting-tile';
 import { useSetting } from '../../../state/hooks/settings';
-import { settingsAtom } from '../../../state/settings';
+import { settingsAtom, AutoSpoilerMode } from '../../../state/settings';
+
+function ModeSelect({
+  value,
+  onChange,
+}: {
+  value: AutoSpoilerMode;
+  onChange: (v: AutoSpoilerMode) => void;
+}) {
+  return (
+    <select
+      value={value}
+      onChange={(e) => onChange(e.target.value as AutoSpoilerMode)}
+      style={{
+        background: 'transparent',
+        color: 'inherit',
+        border: '1px solid rgba(128,128,128,0.4)',
+        borderRadius: '6px',
+        padding: '4px 8px',
+        cursor: 'pointer',
+      }}
+    >
+      <option value="off">Off</option>
+      <option value="received">Received</option>
+      <option value="own">Own</option>
+      <option value="both">Both</option>
+    </select>
+  );
+}
 
 type MiscellaneousProps = {
   requestClose: () => void;
 };
 export function Miscellaneous({ requestClose }: MiscellaneousProps) {
   const [autoSpoilerImages, setAutoSpoilerImages] = useSetting(settingsAtom, 'autoSpoilerImages');
+  const [autoSpoilerGifs, setAutoSpoilerGifs] = useSetting(settingsAtom, 'autoSpoilerGifs');
   const [autoSpoilerVideos, setAutoSpoilerVideos] = useSetting(settingsAtom, 'autoSpoilerVideos');
 
   return (
@@ -43,14 +72,19 @@ export function Miscellaneous({ requestClose }: MiscellaneousProps) {
                   gap="400"
                 >
                   <SettingTile
-                    title="Auto-spoiler images"
-                    description="Blur every image in chat until you click to reveal it — even when the sender didn't mark it as a spoiler."
-                    after={<Switch value={autoSpoilerImages} onChange={setAutoSpoilerImages} />}
+                    title="Images"
+                    description="Blur images until clicked. Received = others only, Own = your sends, Both = all."
+                    after={<ModeSelect value={autoSpoilerImages} onChange={setAutoSpoilerImages} />}
                   />
                   <SettingTile
-                    title="Auto-spoiler videos"
-                    description="Blur every video in chat until you click to reveal it — even when the sender didn't mark it as a spoiler."
-                    after={<Switch value={autoSpoilerVideos} onChange={setAutoSpoilerVideos} />}
+                    title="GIFs"
+                    description="Blur animated GIFs until clicked."
+                    after={<ModeSelect value={autoSpoilerGifs} onChange={setAutoSpoilerGifs} />}
+                  />
+                  <SettingTile
+                    title="Videos"
+                    description="Blur videos until clicked."
+                    after={<ModeSelect value={autoSpoilerVideos} onChange={setAutoSpoilerVideos} />}
                   />
                 </SequenceCard>
               </Box>

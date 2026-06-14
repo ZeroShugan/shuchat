@@ -15,8 +15,9 @@ import { getDirectRoomPath } from '../../pages/pathUtils';
 
 type CreateChatProps = {
   defaultUserId?: string;
+  onCreated?: () => void;
 };
-export function CreateChat({ defaultUserId }: CreateChatProps) {
+export function CreateChat({ defaultUserId, onCreated }: CreateChatProps) {
   const mx = useMatrixClient();
   const alive = useAlive();
   const navigate = useNavigate();
@@ -68,6 +69,7 @@ export function CreateChat({ defaultUserId }: CreateChatProps) {
       if (alive()) {
         userIdInput.value = '';
         navigate(getDirectRoomPath(roomId));
+        onCreated?.();
       }
     });
   };

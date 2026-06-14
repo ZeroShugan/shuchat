@@ -1387,6 +1387,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             ) : (
               <RenderMessageContent
                 displayName={senderDisplayName}
+                senderId={mEvent.getSender() ?? undefined}
                 msgType={mEvent.getContent().msgtype ?? ''}
                 ts={mEvent.getTs()}
                 edited={!!editedEvent}
@@ -1498,6 +1499,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
                   return (
                     <RenderMessageContent
                       displayName={senderDisplayName}
+                      senderId={senderId}
                       msgType={mEvent.getContent().msgtype ?? ''}
                       ts={mEvent.getTs()}
                       edited={!!editedEvent}

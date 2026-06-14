@@ -3,6 +3,7 @@ import { atom } from 'jotai';
 const STORAGE_KEY = 'settings';
 export type DateFormat = 'D MMM YYYY' | 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY/MM/DD' | '';
 export type MessageSpacing = '0' | '100' | '200' | '300' | '400' | '500';
+export type AutoSpoilerMode = 'off' | 'received' | 'own' | 'both';
 export enum MessageLayout {
   Modern = 0,
   Compact = 1,
@@ -46,8 +47,9 @@ export interface Settings {
 
   developerTools: boolean;
 
-  autoSpoilerImages: boolean;
-  autoSpoilerVideos: boolean;
+  autoSpoilerImages: AutoSpoilerMode;
+  autoSpoilerGifs: AutoSpoilerMode;
+  autoSpoilerVideos: AutoSpoilerMode;
 }
 
 const defaultSettings: Settings = {
@@ -87,17 +89,24 @@ const defaultSettings: Settings = {
 
   developerTools: false,
 
-  autoSpoilerImages: false,
-  autoSpoilerVideos: false,
+  autoSpoilerImages: 'off',
+  autoSpoilerGifs: 'off',
+  autoSpoilerVideos: 'off',
 };
 
-export const getSettings = () => {
+export const getSettings = (): Settings => {
   const settings = localStorage.getItem(STORAGE_KEY);
   if (settings === null) return defaultSettings;
-  return {
+  const merged: Settings = {
     ...defaultSettings,
     ...(JSON.parse(settings) as Settings),
   };
+  // migrate legacy boolean auto-spoiler settings → mode enum
+  (['autoSpoilerImages', 'autoSpoilerGifs', 'autoSpoilerVideos'] as const).forEach((k) => {
+    const v = merged[k] as unknown;
+    if (typeof v === 'boolean') merged[k] = v ? 'received' : 'off';
+  });
+  return merged;
 };
 
 export const setSettings = (settings: Settings) => {
@@ -112,3 +121,10 @@ export const settingsAtom = atom<Settings, [Settings], undefined>(
     setSettings(update);
   }
 );
+
+export const autoSpoilerActive = (mode: AutoSpoilerMode, isOwn: boolean): boolean => {
+  if (mode === 'both') return true;
+  if (mode === 'own') return isOwn;
+  if (mode === 'received') return !isOwn;
+  return false;
+};
