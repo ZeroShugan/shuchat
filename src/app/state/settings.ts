@@ -45,6 +45,9 @@ export interface Settings {
   dateFormatString: string;
 
   developerTools: boolean;
+
+  autoSpoilerImages: boolean;
+  autoSpoilerVideos: boolean;
 }
 
 const defaultSettings: Settings = {
@@ -83,6 +86,9 @@ const defaultSettings: Settings = {
   dateFormatString: 'D MMM YYYY',
 
   developerTools: false,
+
+  autoSpoilerImages: false,
+  autoSpoilerVideos: false,
 };
 
 export const getSettings = () => {

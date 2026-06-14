@@ -63,6 +63,14 @@ export const startClient = async (mx: MatrixClient) => {
     initialSyncLimit: 20,
   });
 
+  // Bootstrap cross-signing and secret storage so new users get their
+  // cross-signing keys published automatically after the client starts.
+  const crypto = mx.getCrypto?.() ?? (mx as any).crypto;
+  if (crypto) {
+    try { await crypto.bootstrapSecretStorage({}); } catch {}
+    try { await crypto.bootstrapCrossSigning({ setupNewCrossSigning: false }); } catch {}
+  }
+
   // After sync starts, push the saved presence to the server too.
   if (savedPresence === 'online' || savedPresence === 'unavailable' || savedPresence === 'offline') {
     try { await mx.setPresence({ presence: savedPresence as any }); }

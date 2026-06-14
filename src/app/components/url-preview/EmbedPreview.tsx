@@ -6,7 +6,7 @@ import { Icon, Icons, config } from 'folds';
 type EmbedInfo = {
   embedUrl: string;
   thumbnailUrl?: string;
-  type: 'youtube' | 'twitch' | 'vimeo';
+  type: 'youtube' | 'twitch' | 'vimeo' | 'twitter' | 'discord_video' | 'discord_image';
   isPortrait: boolean; // e.g. YouTube Shorts
 };
 
@@ -83,6 +83,40 @@ export function getEmbedInfo(url: string): EmbedInfo | null {
         };
       }
     }
+
+    // ── Twitter / X ──────────────────────────────────────────────────────────
+    if (host === 'twitter.com' || host === 'x.com') {
+      const vxUrl = `https://vxtwitter.com${u.pathname}${u.search}`;
+      return {
+        embedUrl: vxUrl,
+        type: 'twitter',
+        isPortrait: false,
+      };
+    }
+
+    // ── Discord CDN — direct media files ────────────────────────────────────
+    if (host === 'cdn.discordapp.com' || host === 'media.discordapp.net') {
+      // Extract filename from path (before query params)
+      const pathSegments = u.pathname.split('/');
+      const filename = pathSegments[pathSegments.length - 1] ?? '';
+      const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+      const videoExts = ['mp4', 'webm', 'mov', 'mkv', 'ogg'];
+      const imageExts = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'];
+      if (videoExts.includes(ext)) {
+        return {
+          embedUrl: url,
+          type: 'discord_video',
+          isPortrait: false,
+        };
+      }
+      if (imageExts.includes(ext)) {
+        return {
+          embedUrl: url,
+          type: 'discord_image',
+          isPortrait: false,
+        };
+      }
+    }
   } catch {
     // invalid URL
   }
@@ -97,6 +131,45 @@ export function EmbedPreview({ url }: EmbedPreviewProps) {
   const [playing, setPlaying] = useState(false);
   const info = getEmbedInfo(url);
   if (!info) return null;
+
+  // ── Discord CDN: render native video or image directly ──────────────────
+  if (info.type === 'discord_video') {
+    return (
+      <video
+        src={info.embedUrl}
+        controls
+        style={{
+          marginTop: config.space.S200,
+          maxWidth: 480,
+          maxHeight: 360,
+          width: '100%',
+          height: 'auto',
+          borderRadius: config.radii.R400,
+          background: '#0d0d0d',
+          display: 'block',
+        }}
+      />
+    );
+  }
+
+  if (info.type === 'discord_image') {
+    return (
+      <img
+        src={info.embedUrl}
+        alt="Discord attachment"
+        style={{
+          marginTop: config.space.S200,
+          maxWidth: 480,
+          maxHeight: 360,
+          width: '100%',
+          height: 'auto',
+          borderRadius: config.radii.R400,
+          display: 'block',
+          objectFit: 'contain',
+        }}
+      />
+    );
+  }
 
   const maxWidth = info.isPortrait ? 220 : 480;
   // aspect ratio: shorts 9/16, everything else 16/9
@@ -175,6 +248,7 @@ export function EmbedPreview({ url }: EmbedPreviewProps) {
           width: 52, height: 52, borderRadius: '50%',
           background: info.type === 'youtube' ? 'rgba(255,0,0,0.9)' :
                       info.type === 'twitch'  ? 'rgba(100,65,165,0.9)' :
+                      info.type === 'twitter' ? 'rgba(29,161,242,0.9)' :
                                                 'rgba(26,183,234,0.9)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           boxShadow: '0 2px 12px rgba(0,0,0,0.5)',
@@ -192,7 +266,8 @@ export function EmbedPreview({ url }: EmbedPreviewProps) {
         fontSize: 11, color: '#fff', fontWeight: 600, letterSpacing: 0.3,
       }}>
         {info.type === 'youtube' ? '▶ YouTube' :
-         info.type === 'twitch'  ? '● Twitch'  : 'Vimeo'}
+         info.type === 'twitch'  ? '● Twitch'  :
+         info.type === 'twitter' ? '𝕏 Twitter/X' : 'Vimeo'}
       </div>
     </div>
   );

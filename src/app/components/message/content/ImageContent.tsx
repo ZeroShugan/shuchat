@@ -31,6 +31,8 @@ import { decryptFile, downloadEncryptedMedia, mxcUrlToHttp } from '../../../util
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { ModalWide } from '../../../styles/Modal.css';
 import { validBlurHash } from '../../../utils/blurHash';
+import { useSetting } from '../../../state/hooks/settings';
+import { settingsAtom } from '../../../state/settings';
 
 type RenderViewerProps = {
   src: string;
@@ -79,11 +81,12 @@ export const ImageContent = as<'div', ImageContentProps>(
     const mx = useMatrixClient();
     const useAuthentication = useMediaAuthentication();
     const blurHash = validBlurHash(info?.[MATRIX_BLUR_HASH_PROPERTY_NAME]);
+    const [autoSpoilerImages] = useSetting(settingsAtom, 'autoSpoilerImages');
 
     const [load, setLoad] = useState(false);
     const [error, setError] = useState(false);
     const [viewer, setViewer] = useState(false);
-    const [blurred, setBlurred] = useState(markedAsSpoiler ?? false);
+    const [blurred, setBlurred] = useState((markedAsSpoiler ?? false) || autoSpoilerImages);
 
     const [srcState, loadSrc] = useAsyncCallback(
       useCallback(async () => {
@@ -161,7 +164,7 @@ export const ImageContent = as<'div', ImageContentProps>(
             punch={1}
           />
         )}
-        {!autoPlay && !markedAsSpoiler && srcState.status === AsyncStatus.Idle && (
+        {!autoPlay && !blurred && srcState.status === AsyncStatus.Idle && (
           <Box className={css.AbsoluteContainer} alignItems="Center" justifyContent="Center">
             <Button
               variant="Secondary"
