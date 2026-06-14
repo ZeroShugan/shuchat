@@ -82,9 +82,15 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
     }
     setVerifyError(undefined);
     try {
+      // eslint-disable-next-line no-console
+      console.info('[ShuChat-verify] requestVerificationDM ->', userId, 'room', dmRoom.roomId);
       const req = await crypto.requestVerificationDM(userId, dmRoom.roomId);
+      // eslint-disable-next-line no-console
+      console.info('[ShuChat-verify] requestVerificationDM ok; phase=', req?.phase);
       setVerificationRequest(req);
     } catch (e) {
+      // eslint-disable-next-line no-console
+      console.error('[ShuChat-verify] requestVerificationDM failed', e);
       setVerifyError(e instanceof Error ? e.message : 'Verification request failed.');
     }
   }, [mx, userId]);

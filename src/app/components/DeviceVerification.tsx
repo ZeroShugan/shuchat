@@ -351,8 +351,13 @@ function CrossUserVerificationBanner({
     >
       <Icon src={Icons.Lock} size="200" style={{ flexShrink: 0, opacity: 0.8 }} />
       <Box direction="Column" gap="100" grow="Yes">
-        <Text size="B400">Verification requested</Text>
-        <Text size="T300" style={{ opacity: 0.7, wordBreak: 'break-all' }}>
+        <Text size="B400" style={{ color: '#ffffff' }}>
+          Verification requested
+        </Text>
+        <Text
+          size="T300"
+          style={{ color: 'rgba(255,255,255,0.7)', wordBreak: 'break-all' }}
+        >
           {displayName} ({userId})
         </Text>
       </Box>
@@ -375,6 +380,13 @@ export function ReceiveCrossUserVerification() {
 
   useVerificationRequestReceived(
     React.useCallback((req: VerificationRequest) => {
+      // eslint-disable-next-line no-console
+      console.info(
+        '[ShuChat-verify] incoming verification request from',
+        req.otherUserId,
+        'self?',
+        req.isSelfVerification
+      );
       if (req.isSelfVerification) return;
       setRequest(req);
       setShowBanner(true);

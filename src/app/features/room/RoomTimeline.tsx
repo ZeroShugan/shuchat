@@ -1952,7 +1952,11 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
           const isIgnored = !!(ps && ignoredUsersSet.has(ps));
           const isRedacted = pe.isRedacted() && !showHiddenEvents;
           const isReactionOrEdit = reactionOrEditEvent(pe);
-          isPrevRendered = !isIgnored && !isRedacted && !isReactionOrEdit;
+          const isVerifReq =
+            pe.getType() === 'm.room.message' &&
+            pe.getContent().msgtype === 'm.key.verification.request';
+          isPrevRendered =
+            !isIgnored && !isRedacted && !isReactionOrEdit && !isVerifReq;
         }
       }
     }
@@ -1973,9 +1977,12 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       prevEvent.getType() === mEvent.getType() &&
       minuteDifference(prevEvent.getTs(), mEvent.getTs()) < 2;
 
-    const eventJSX = reactionOrEditEvent(mEvent)
-      ? null
-      : renderMatrixEvent(
+    const eventJSX =
+      reactionOrEditEvent(mEvent) ||
+      (mEvent.getType() === 'm.room.message' &&
+        mEvent.getContent().msgtype === 'm.key.verification.request')
+        ? null
+        : renderMatrixEvent(
           mEvent.getType(),
           typeof mEvent.getStateKey() === 'string',
           mEventId,

@@ -1,4 +1,10 @@
-import { createClient, MatrixClient, IndexedDBStore, IndexedDBCryptoStore } from 'matrix-js-sdk';
+import {
+  createClient,
+  MatrixClient,
+  IndexedDBStore,
+  IndexedDBCryptoStore,
+  Method,
+} from 'matrix-js-sdk';
 
 import { cryptoCallbacks } from './secretStorageKeys';
 import { clearNavToActivePathStore } from '../app/state/navToActivePath';
@@ -41,6 +47,51 @@ export const initClient = async (session: Session): Promise<MatrixClient> => {
   // Guests cannot use E2E encryption — skip Rust crypto init
   if (!session.isGuest) {
     await mx.initRustCrypto();
+
+    // ── WS3 verification fix ────────────────────────────────────────────────
+    // matrix-js-sdk 38.2.0 sends the in-room verification *request* as a bare
+    // `m.key.verification.request`-typed event, but its own receive path
+    // (isVerificationEvent / onKeyVerificationEvent) only recognises the spec
+    // form: an `m.room.message` with msgtype `m.key.verification.request`. The
+    // mismatch means ShuChat<->ShuChat user verification never surfaces on the
+    // receiver. Override the internal send (called via `this.` inside
+    // requestVerificationDM) to publish the spec-compliant event so both halves
+    // agree. Remove when the SDK is upgraded past this bug.
+    const cryptoApi = mx.getCrypto?.() as any;
+    if (cryptoApi && typeof cryptoApi.sendVerificationRequestContent === 'function') {
+      cryptoApi.sendVerificationRequestContent = async (
+        roomId: string,
+        content: Record<string, unknown>
+      ): Promise<string> => {
+        // Mirror the SDK's original raw, unencrypted send exactly — only the
+        // event type changes (m.room.message) and we add the required msgtype.
+        // `content` from the rust SDK is a JSON *string* (not a plain object,
+        // not a spreadable wasm object). Normalise to an object either way, then
+        // add the required msgtype for the m.room.message form.
+        const c = content as unknown;
+        const body: Record<string, unknown> =
+          typeof c === 'string'
+            ? (JSON.parse(c) as Record<string, unknown>)
+            : (JSON.parse(JSON.stringify(c)) as Record<string, unknown>);
+        body.msgtype = 'm.key.verification.request';
+        const txId = mx.makeTxnId();
+        // eslint-disable-next-line no-console
+        console.info('[ShuChat-verify] send in-room request as m.room.message (raw)', {
+          roomId,
+          body,
+        });
+        const res: { event_id: string } = await mx.http.authedRequest(
+          Method.Put,
+          `/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${encodeURIComponent(txId)}`,
+          undefined,
+          body
+        );
+        // eslint-disable-next-line no-console
+        console.info('[ShuChat-verify] request sent, event_id =', res.event_id);
+        return res.event_id;
+      };
+    }
+    // ────────────────────────────────────────────────────────────────────────
   }
 
   mx.setMaxListeners(50);
