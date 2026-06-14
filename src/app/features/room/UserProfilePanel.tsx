@@ -282,14 +282,22 @@ function UserDeviceList({ crypto, userId, mx }: UserDeviceListProps) {
           {devices?.length === 0 && (
             <Text size="T200" style={{ opacity: 0.5 }}>No devices found.</Text>
           )}
-          {devices?.map((info) => (
-            <DeviceRow
-              key={info.device.deviceId}
-              crypto={crypto}
-              userId={userId}
-              info={info}
-            />
-          ))}
+          {devices && devices.length > 0 && (
+            <Box
+              direction="Column"
+              gap="200"
+              style={{ maxHeight: '45vh', overflowY: 'auto', paddingRight: 4 }}
+            >
+              {devices.map((info) => (
+                <DeviceRow
+                  key={info.device.deviceId}
+                  crypto={crypto}
+                  userId={userId}
+                  info={info}
+                />
+              ))}
+            </Box>
+          )}
         </Box>
       )}
     </Box>
