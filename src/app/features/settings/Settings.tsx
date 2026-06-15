@@ -34,6 +34,7 @@ import { About } from './about';
 import { UseStateProvider } from '../../components/UseStateProvider';
 import { stopPropagation } from '../../utils/keyboard';
 import { LogoutDialog } from '../../components/LogoutDialog';
+import { SettingsSearch } from './search';
 
 export enum SettingsPages {
   GeneralPage,
@@ -118,6 +119,7 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
     if (initialPage) return initialPage;
     return screenSize === ScreenSize.Mobile ? undefined : SettingsPages.GeneralPage;
   });
+  const [query, setQuery] = useState('');
   const menuItems = useSettingsMenuItems();
 
   const handlePageRequestClose = () => {
@@ -131,7 +133,8 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
   return (
     <PageRoot
       nav={
-        screenSize === ScreenSize.Mobile && activePage !== undefined ? undefined : (
+        screenSize === ScreenSize.Mobile && (activePage !== undefined || query.trim() !== '')
+          ? undefined : (
           <PageNav size="300">
             <PageNavHeader outlined={false}>
               <Box grow="Yes" gap="200">
@@ -156,6 +159,23 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
             </PageNavHeader>
             <Box grow="Yes" direction="Column">
               <PageNavContent>
+                <div style={{ padding: `0 ${config.space.S200} ${config.space.S200}` }}>
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search settings…"
+                    style={{
+                      width: '100%',
+                      boxSizing: 'border-box',
+                      background: 'rgba(128,128,128,0.12)',
+                      color: 'inherit',
+                      border: '1px solid rgba(128,128,128,0.35)',
+                      borderRadius: '8px',
+                      padding: '6px 10px',
+                      outline: 'none',
+                    }}
+                  />
+                </div>
                 <div style={{ flexGrow: 1 }}>
                   {menuItems.map((item) => (
                     <MenuItem
@@ -217,6 +237,17 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
         )
       }
     >
+      {query.trim() ? (
+        <SettingsSearch
+          query={query}
+          setQuery={setQuery}
+          onOpenPage={(p) => {
+            setQuery('');
+            setActivePage(p);
+          }}
+        />
+      ) : (
+        <>
       {activePage === SettingsPages.GeneralPage && (
         <General requestClose={handlePageRequestClose} />
       )}
@@ -239,6 +270,8 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
         <DeveloperTools requestClose={handlePageRequestClose} />
       )}
       {activePage === SettingsPages.AboutPage && <About requestClose={handlePageRequestClose} />}
+        </>
+      )}
     </PageRoot>
   );
 }
