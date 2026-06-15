@@ -247,11 +247,13 @@ function UserDeviceList({ crypto, userId, mx }: UserDeviceListProps) {
           <Box
             direction="Column"
             gap="100"
+            shrink="No"
             style={{
               background: 'rgba(255,255,255,0.03)',
               border: '1px solid rgba(255,255,255,0.07)',
               borderRadius: 6,
               padding: '8px 10px',
+              flexShrink: 0,
             }}
           >
             <Text size="T200" style={{ fontWeight: 700, opacity: 0.6, fontSize: 11 }}>What do the colours mean?</Text>
