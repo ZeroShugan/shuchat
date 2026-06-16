@@ -1,6 +1,6 @@
 import { atom, useAtom, useAtomValue } from 'jotai';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { MatrixError, Room } from 'matrix-js-sdk';
+import { MatrixError, Room, RoomEvent } from 'matrix-js-sdk';
 import { IHierarchyRoom } from 'matrix-js-sdk/lib/@types/spaces';
 import { QueryFunction, useInfiniteQuery } from '@tanstack/react-query';
 import { useMatrixClient } from './useMatrixClient';
@@ -262,6 +262,22 @@ export const useSpaceJoinedHierarchy = (
       [spaceId, roomToParents, setHierarchy, getRoom, excludeRoom, sortRoomItems]
     )
   );
+
+  // Re-filter when our membership in a room of this space changes (e.g. leaving a
+  // room) — SpaceChild state doesn't change on leave, so without this the left
+  // room would linger in the sidebar until a full reload.
+  useEffect(() => {
+    const onMyMembership = (room: Room) => {
+      const rid = room.roomId;
+      if (spaceId === rid || getAllParents(roomToParents, rid).has(spaceId)) {
+        setHierarchy(getSpaceJoinedHierarchy(spaceId, getRoom, excludeRoom, sortRoomItems));
+      }
+    };
+    mx.on(RoomEvent.MyMembership, onMyMembership);
+    return () => {
+      mx.removeListener(RoomEvent.MyMembership, onMyMembership);
+    };
+  }, [mx, spaceId, roomToParents, setHierarchy, getRoom, excludeRoom, sortRoomItems]);
 
   return hierarchy;
 };
