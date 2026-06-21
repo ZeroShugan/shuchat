@@ -190,6 +190,9 @@ const getSpaceJoinedHierarchy = (
       if (!childId || !isRoomId(childId)) return false;
       const room = getRoom(childId);
       if (!room || room.isSpaceRoom()) return false;
+      // Only show rooms we're actually joined to — a left room stays in the
+      // SDK store (membership 'leave') and would otherwise linger here.
+      if (room.getMyMembership() !== 'join') return false;
 
       return true;
     });
