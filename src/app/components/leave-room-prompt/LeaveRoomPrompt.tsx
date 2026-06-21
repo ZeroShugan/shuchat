@@ -17,7 +17,9 @@ import {
   Spinner,
 } from 'folds';
 import { MatrixError } from 'matrix-js-sdk';
+import { useSetAtom } from 'jotai';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
+import { allRoomsAtom } from '../../state/room-list/roomList';
 import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
 import { stopPropagation } from '../../utils/keyboard';
 
@@ -28,11 +30,21 @@ type LeaveRoomPromptProps = {
 };
 export function LeaveRoomPrompt({ roomId, onDone, onCancel }: LeaveRoomPromptProps) {
   const mx = useMatrixClient();
+  const setAllRooms = useSetAtom(allRoomsAtom);
 
   const [leaveState, leaveRoom] = useAsyncCallback<undefined, MatrixError, []>(
     useCallback(async () => {
-      mx.leave(roomId);
-    }, [mx, roomId])
+      // Optimistically remove the room so it disappears from the DM/room list
+      // immediately, rather than lingering as a half-left 'empty room' until
+      // the next sync. Restored below if the leave actually fails.
+      setAllRooms({ type: 'DELETE', roomId });
+      try {
+        await mx.leave(roomId);
+      } catch (e) {
+        setAllRooms({ type: 'PUT', roomId });
+        throw e;
+      }
+    }, [mx, roomId, setAllRooms])
   );
 
   const handleLeave = () => {
