@@ -21,7 +21,7 @@
       vvAutoGainControl: true,
       vvAutoSensitivity: true,
       vvSensitivity: -100,
-      voiceVolume: 1,
+      voiceVolume: 0.5,
     };
     try {
       var raw = localStorage.getItem('settings');

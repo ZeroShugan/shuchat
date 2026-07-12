@@ -9,18 +9,7 @@ import { useSetting } from '../../../state/hooks/settings';
 import { settingsAtom } from '../../../state/settings';
 import { callEmbedAtom } from '../../../state/callEmbed';
 import { RangeSlider } from '../../../components/range-slider';
-
-const selectStyle: React.CSSProperties = {
-  background: 'rgba(128,128,128,0.12)',
-  color: 'inherit',
-  border: '1px solid rgba(128,128,128,0.35)',
-  borderRadius: '8px',
-  padding: '6px 10px',
-  outline: 'none',
-  maxWidth: '240px',
-  width: '100%',
-  cursor: 'pointer',
-};
+import { NativeSelect } from '../../../components/native-select';
 
 type DeviceLists = {
   mics: MediaDeviceInfo[];
@@ -162,7 +151,7 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
       analyser.connect(dest);
       audioEl.srcObject = dest.stream;
       audioEl.muted = !loopback;
-      audioEl.volume = voiceVolume ?? 1;
+      audioEl.volume = voiceVolume ?? 0.5;
       const sinkEl = audioEl as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
       if (speakerDeviceId && sinkEl.setSinkId) sinkEl.setSinkId(speakerDeviceId).catch(() => {});
       audioEl.play().catch(() => {});
@@ -203,7 +192,7 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
   }, [micGain]);
   useEffect(() => {
     const t = testRef.current;
-    if (t) t.audioEl.volume = voiceVolume ?? 1;
+    if (t) t.audioEl.volume = voiceVolume ?? 0.5;
     // voice volume also applies live to an ongoing call
     callEmbed?.control.applyVoiceVolume();
   }, [voiceVolume, callEmbed]);
@@ -290,7 +279,7 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                     description="Input device used in calls. Applies when you join your next call."
                     after={
                       <select
-                        style={selectStyle}
+                        className={NativeSelect}
                         value={micDeviceId ?? ''}
                         onChange={(e) => setMicDeviceId(e.target.value)}
                       >
@@ -304,7 +293,7 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                       description="Output device for call audio. Applies live."
                       after={
                         <select
-                          style={selectStyle}
+                          className={NativeSelect}
                           value={speakerDeviceId ?? ''}
                           onChange={(e) => setSpeakerDeviceId(e.target.value)}
                         >
@@ -366,9 +355,9 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                   />
                   <SettingTile
                     title="Output Volume"
-                    description={`People speaking in calls — ${Math.round((voiceVolume ?? 1) * 100)}%. Applies live.`}
+                    description={`People speaking in calls — ${Math.round((voiceVolume ?? 0.5) * 100)}%. Applies live.`}
                     after={
-                      <RangeSlider min={0} max={1} step={0.05} value={voiceVolume ?? 1} onChange={setVoiceVolume} />
+                      <RangeSlider min={0} max={1} step={0.05} value={voiceVolume ?? 0.5} onChange={setVoiceVolume} />
                     }
                   />
                 </SequenceCard>

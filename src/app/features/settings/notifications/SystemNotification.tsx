@@ -161,10 +161,10 @@ export function SystemNotification() {
         />
         <SettingTile
           title="Voice Volume"
-          description={`People speaking in calls — ${Math.round((voiceVolume ?? 1) * 100)}%`}
+          description={`People speaking in calls — ${Math.round((voiceVolume ?? 0.5) * 100)}%`}
           after={
             <RangeSlider min={0} max={1} step={0.05}
-              value={voiceVolume ?? 1} onChange={setVoiceVolume} />
+              value={voiceVolume ?? 0.5} onChange={setVoiceVolume} />
           }
         />
         <SettingTile

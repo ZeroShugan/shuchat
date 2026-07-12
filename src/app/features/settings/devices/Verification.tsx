@@ -116,7 +116,9 @@ export function VerifyCurrentDeviceTile({
         title="Unverified"
         description={
           <>
-            Start verification from other device or verify manually.{' '}
+            Open ShuChat (or another Matrix client) on a device where you're already
+            logged in — a verification request will pop up there for you to accept. No
+            other device available? Verify manually with your Security Key/Phrase.{' '}
             <Text as="a" size="T200" onClick={() => setLearnMore(!learnMore)}>
               <b>{learnMore ? 'View Less' : 'Learn More'}</b>
             </Text>

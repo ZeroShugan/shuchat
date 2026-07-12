@@ -1,4 +1,5 @@
 import React from 'react';
+import { NativeSelect } from '../../../components/native-select';
 import { Box, Text, IconButton, Icon, Icons, Scroll } from 'folds';
 import { Page, PageContent, PageHeader } from '../../../components/page';
 import { SequenceCard } from '../../../components/sequence-card';
@@ -16,16 +17,10 @@ function ModeSelect({
 }) {
   return (
     <select
+      className={NativeSelect}
+      style={{ width: 'auto' }}
       value={value}
       onChange={(e) => onChange(e.target.value as AutoSpoilerMode)}
-      style={{
-        background: 'transparent',
-        color: 'inherit',
-        border: '1px solid rgba(128,128,128,0.4)',
-        borderRadius: '6px',
-        padding: '4px 8px',
-        cursor: 'pointer',
-      }}
     >
       <option value="off">Off</option>
       <option value="received">Received</option>

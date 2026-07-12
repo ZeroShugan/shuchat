@@ -1,4 +1,5 @@
 import React from 'react';
+import { NativeSelect } from '../../../components/native-select';
 import { Box, Text, IconButton, Icon, Icons, Scroll, Switch } from 'folds';
 import { Page, PageContent, PageHeader } from '../../../components/page';
 import { SequenceCard } from '../../../components/sequence-card';
@@ -131,18 +132,10 @@ export function Devices({ requestClose }: DevicesProps) {
                     description="Which devices should receive your encryption keys in encrypted chats?"
                     after={
                       <select
+                        className={NativeSelect}
+                        style={{ width: 'auto' }}
                         value={shareKeysWith ?? 'all'}
                         onChange={(e) => setShareKeysWith(e.target.value as any)}
-                        style={{
-                          background: 'var(--mx-surface-variant-container, #2b2d31)',
-                          color: 'inherit',
-                          border: '1px solid rgba(255,255,255,0.12)',
-                          borderRadius: 6,
-                          padding: '4px 8px',
-                          fontSize: 13,
-                          cursor: 'pointer',
-                          fontFamily: 'inherit',
-                        }}
                       >
                         <option value="all">All devices</option>
                         <option value="verified">Verified devices</option>

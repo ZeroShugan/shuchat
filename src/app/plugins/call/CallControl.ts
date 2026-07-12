@@ -137,7 +137,7 @@ export class CallControl extends EventEmitter implements CallControlState {
   private setSound(sound: boolean): void {
     const callDocument = this.iframe.contentDocument ?? this.iframe.contentWindow?.document;
     if (callDocument) {
-      const voiceVol = getSettings().voiceVolume ?? 1;
+      const voiceVol = getSettings().voiceVolume ?? 0.5;
       callDocument.querySelectorAll('audio').forEach((el) => {
         // eslint-disable-next-line no-param-reassign
         el.muted = !sound;
@@ -150,7 +150,7 @@ export class CallControl extends EventEmitter implements CallControlState {
   public applyVoiceVolume(): void {
     const callDocument = this.iframe.contentDocument ?? this.iframe.contentWindow?.document;
     if (callDocument) {
-      const voiceVol = getSettings().voiceVolume ?? 1;
+      const voiceVol = getSettings().voiceVolume ?? 0.5;
       callDocument.querySelectorAll('audio').forEach((el) => {
         // eslint-disable-next-line no-param-reassign
         el.volume = voiceVol;

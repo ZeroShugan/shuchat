@@ -94,7 +94,7 @@ const defaultSettings: Settings = {
   isNotificationSounds: true,
   notificationVolume: 0.5,
   mediaVolume: 0.5,
-  voiceVolume: 1.0,
+  voiceVolume: 0.5,
   shareKeysWith: 'all',
 
   hour24Clock: false,

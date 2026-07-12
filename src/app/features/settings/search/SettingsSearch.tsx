@@ -5,6 +5,7 @@ import { SequenceCard } from '../../../components/sequence-card';
 import { SequenceCardStyle } from '../styles.css';
 import { SettingTile } from '../../../components/setting-tile';
 import { RangeSlider } from '../../../components/range-slider';
+import { NativeSelect } from '../../../components/native-select';
 import { useSetting } from '../../../state/hooks/settings';
 import { settingsAtom, Settings as SettingsType, AutoSpoilerMode } from '../../../state/settings';
 import { SettingsPages } from '../Settings';
@@ -30,16 +31,10 @@ function ModeControl({ settingKey }: { settingKey: keyof SettingsType }) {
   const [v, setV] = useSetting(settingsAtom, settingKey as never);
   return (
     <select
+      className={NativeSelect}
+      style={{ width: 'auto' }}
       value={v as AutoSpoilerMode}
       onChange={(e) => (setV as (m: AutoSpoilerMode) => void)(e.target.value as AutoSpoilerMode)}
-      style={{
-        background: 'transparent',
-        color: 'inherit',
-        border: '1px solid rgba(128,128,128,0.4)',
-        borderRadius: '6px',
-        padding: '4px 8px',
-        cursor: 'pointer',
-      }}
     >
       <option value="off">Off</option>
       <option value="received">Received</option>
@@ -101,7 +96,7 @@ export function SettingsSearch({ query, setQuery, onOpenPage }: SettingsSearchPr
       { id: 'desktopnotif', label: 'Desktop Notifications', keywords: 'desktop notifications popup', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'bool', settingKey: 'showNotifications' },
       { id: 'notifsound', label: 'Notification Sounds', keywords: 'notification sound audio', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'bool', settingKey: 'isNotificationSounds' },
       { id: 'appvol', label: 'App Sounds Volume', keywords: 'notification volume app sound ring', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'notificationVolume', def: 0.5 },
-      { id: 'voicevol', label: 'Voice Volume', keywords: 'voice call volume people speaking', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'voiceVolume', def: 1 },
+      { id: 'voicevol', label: 'Voice Volume', keywords: 'voice call volume people speaking', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'voiceVolume', def: 0.5 },
       { id: 'mediavol', label: 'Media Volume', keywords: 'media audio video volume', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'mediaVolume', def: 0.5 },
       // ── Miscellaneous ──
       { id: 'spoilimg', label: 'Auto-Spoiler Images', keywords: 'spoiler blur images media', page: SettingsPages.MiscellaneousPage, pageName: 'Miscellaneous', kind: 'mode', settingKey: 'autoSpoilerImages' },

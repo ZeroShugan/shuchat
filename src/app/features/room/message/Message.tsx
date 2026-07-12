@@ -901,6 +901,13 @@ export const Message = as<'div', MessageProps>(
         highlight={highlight}
         selected={!!menuAnchor || !!emojiBoardAnchor}
         style={containerStyle}
+        title={
+          trustColour === EventShieldColour.RED
+            ? 'Encryption notice: sent from an untrusted device (red bar).'
+            : trustColour === EventShieldColour.GREY
+            ? "Encryption notice: the sender's device is not verified (orange bar). Not an unread marker."
+            : undefined
+        }
         {...props}
         {...hoverProps}
         {...focusWithinProps}
