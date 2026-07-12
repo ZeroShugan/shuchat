@@ -27,6 +27,7 @@ import { UserAvatar } from '../../components/user-avatar';
 import { nameInitials } from '../../utils/common';
 import { Notifications } from './notifications';
 import { VoiceVideo } from './voice-video';
+import { Updates } from './updates';
 import { Devices } from './devices';
 import { EmojisStickers } from './emojis-stickers';
 import { Miscellaneous } from './miscellaneous';
@@ -47,6 +48,7 @@ export enum SettingsPages {
   DeveloperToolsPage,
   AboutPage,
   VoiceVideoPage,
+  UpdatesPage,
 }
 
 type SettingsMenuItem = {
@@ -97,6 +99,11 @@ const useSettingsMenuItems = (): SettingsMenuItem[] =>
         page: SettingsPages.DeveloperToolsPage,
         name: 'Developer Tools',
         icon: Icons.Terminal,
+      },
+      {
+        page: SettingsPages.UpdatesPage,
+        name: 'Updates',
+        icon: Icons.Download,
       },
       {
         page: SettingsPages.AboutPage,
@@ -266,6 +273,9 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
       )}
       {activePage === SettingsPages.VoiceVideoPage && (
         <VoiceVideo requestClose={handlePageRequestClose} />
+      )}
+      {activePage === SettingsPages.UpdatesPage && (
+        <Updates requestClose={handlePageRequestClose} />
       )}
       {activePage === SettingsPages.DevicesPage && (
         <Devices requestClose={handlePageRequestClose} />
