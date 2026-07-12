@@ -575,16 +575,21 @@ export function UserProfilePanel({ userId, roomId, inColumn, onClose }: UserProf
   const handleEditAvatar = useCallback(() => { avatarFileRef.current?.click(); }, []);
   const handleEditBanner = useCallback(() => { bannerFileRef.current?.click(); }, []);
 
+  // Persisted, drag-resizable width (drag the panel's left edge).
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [panelWidth, onPanelResize] = usePanelWidth('profile-panel', 320, 240, 520, 'start');
+
   return (
     <Box
       direction="Column"
       style={{
         ...(inColumn
           ? { width: '100%' }
-          : { width: '320px', minWidth: '320px', borderLeft: `1px solid ${color.Surface.ContainerLine}`, height: '100%' }),
+          : { width: panelWidth, minWidth: 240, borderLeft: `1px solid ${color.Surface.ContainerLine}`, height: '100%', position: 'relative' }),
         overflowY: inColumn ? 'visible' : 'auto',
       }}
     >
+      {!inColumn && <ResizeHandle edge="start" onPointerDown={onPanelResize} />}
       {isOwnProfile && (
         <>
           <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFile} />

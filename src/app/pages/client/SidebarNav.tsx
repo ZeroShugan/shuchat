@@ -22,8 +22,13 @@ import { CreateTab } from './sidebar/CreateTab';
 export function SidebarNav() {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Persisted, drag-resizable width for the space/server icon strip.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [sidebarWidth, onSidebarResize] = usePanelWidth('sidebar', 66, 56, 140, 'end');
+
   return (
-    <Sidebar>
+    <Sidebar style={{ width: sidebarWidth, position: 'relative' }}>
+      <ResizeHandle edge="end" onPointerDown={onSidebarResize} />
       <SidebarContent
         scrollable={
           <Scroll ref={scrollRef} variant="Background" size="0">
