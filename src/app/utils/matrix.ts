@@ -152,6 +152,8 @@ export const uploadContent = async (
 ) => {
   const { name, fileType, hideFilename, onProgress, onPromise, onSuccess, onError } = options;
 
+  // eslint-disable-next-line no-console
+  console.info('[upload] start', name, file.size, 'bytes', fileType);
   const uploadPromise = mx.uploadContent(file, {
     name,
     type: fileType,
@@ -162,9 +164,13 @@ export const uploadContent = async (
   try {
     const data = await uploadPromise;
     const mxc = data.content_uri;
+    // eslint-disable-next-line no-console
+    console.info('[upload] done', name, '→', mxc || '(no content_uri!)');
     if (mxc) onSuccess(mxc);
     else onError(new MatrixError(data));
   } catch (e: any) {
+    // eslint-disable-next-line no-console
+    console.warn('[upload] FAILED', name, e);
     const error = typeof e?.message === 'string' ? e.message : undefined;
     const errcode = typeof e?.name === 'string' ? e.message : undefined;
     onError(new MatrixError({ error, errcode }));
@@ -302,9 +308,17 @@ export const downloadMedia = async (src: string, accessToken?: string): Promise<
   if (accessToken && src.includes('/_matrix/client/v1/media/')) {
     headers['Authorization'] = `Bearer ${accessToken}`;
   }
+  // eslint-disable-next-line no-console
+  console.info('[media] fetch start', src.slice(-24));
+  const t0 = Date.now();
   const res = await fetch(src, { method: 'GET', headers });
+  // eslint-disable-next-line no-console
+  console.info('[media] response', res.status, 'after', Date.now() - t0, 'ms');
   if (!res.ok) throw new Error(`Media download failed with status ${res.status}`);
-  return res.blob();
+  const blob = await res.blob();
+  // eslint-disable-next-line no-console
+  console.info('[media] body read', blob.size, 'bytes in', Date.now() - t0, 'ms');
+  return blob;
 };
 
 export const downloadEncryptedMedia = async (
@@ -313,8 +327,15 @@ export const downloadEncryptedMedia = async (
   accessToken?: string
 ): Promise<Blob> => {
   const encryptedContent = await downloadMedia(src, accessToken);
-  const decryptedContent = await decryptContent(await encryptedContent.arrayBuffer());
-
+  // eslint-disable-next-line no-console
+  console.info('[media] decrypt start', encryptedContent.size, 'bytes');
+  const t0 = Date.now();
+  const buf = await encryptedContent.arrayBuffer();
+  // eslint-disable-next-line no-console
+  console.info('[media] arrayBuffer ready in', Date.now() - t0, 'ms');
+  const decryptedContent = await decryptContent(buf);
+  // eslint-disable-next-line no-console
+  console.info('[media] decrypted', decryptedContent.size, 'bytes in', Date.now() - t0, 'ms');
   return decryptedContent;
 };
 

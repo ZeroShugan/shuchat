@@ -3,7 +3,7 @@
   "homeserverList": [
     "shugan.dev"
   ],
-  "allowCustomHomeservers": false,
+  "allowCustomHomeservers": true,
   "featuredCommunities": {
     "openAsDefault": false,
     "spaces": [],

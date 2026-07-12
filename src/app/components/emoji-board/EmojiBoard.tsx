@@ -28,7 +28,9 @@ import { editableActiveElement, targetFromEvent } from '../../utils/dom';
 import { useAsyncSearch, UseAsyncSearchOptions } from '../../hooks/useAsyncSearch';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useThrottle } from '../../hooks/useThrottle';
-import { addRecentEmoji } from '../../plugins/recent-emoji';
+import { addRecentEmoji, addRecentCustomEmoji } from '../../plugins/recent-emoji';
+import { toggleFavoriteEmoji } from '../../plugins/favorite-emoji';
+import { useFavoriteEmoji } from '../../hooks/useFavoriteEmoji';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { ImagePack, ImageUsage, PackImageReader } from '../../plugins/custom-emoji';
 import { getEmoticonSearchStr } from '../../plugins/utils';
@@ -56,6 +58,7 @@ import { GifContent } from '../gif-board';
 import { VirtualTile } from '../virtualizer';
 
 const RECENT_GROUP_ID = 'recent_group';
+const FAVORITE_GROUP_ID = 'favorite_group';
 const SEARCH_GROUP_ID = 'search_group';
 
 type EmojiGroupItem = {
@@ -76,12 +79,18 @@ const useGroups = (
   const mx = useMatrixClient();
 
   const recentEmojis = useRecentEmoji(mx, 21);
+  const favoriteEmojis = useFavoriteEmoji(mx, 42);
   const labels = useEmojiGroupLabels();
 
   const emojiGroupItems = useMemo(() => {
     const g: EmojiGroupItem[] = [];
     if (tab !== EmojiBoardTab.Emoji) return g;
 
+    g.push({
+      id: FAVORITE_GROUP_ID,
+      name: 'Favorites',
+      items: favoriteEmojis,
+    });
     g.push({
       id: RECENT_GROUP_ID,
       name: 'Recent',
@@ -110,7 +119,7 @@ const useGroups = (
     });
 
     return g;
-  }, [mx, recentEmojis, labels, imagePacks, tab]);
+  }, [mx, favoriteEmojis, recentEmojis, labels, imagePacks, tab]);
 
   const stickerGroupItems = useMemo(() => {
     const g: StickerGroupItem[] = [];
@@ -188,6 +197,13 @@ function EmojiSidebar({ activeGroupAtom, packs, onScrollToGroup }: EmojiSidebarP
   return (
     <Sidebar>
       <SidebarStack>
+        <GroupIcon
+          active={activeGroupId === FAVORITE_GROUP_ID}
+          id={FAVORITE_GROUP_ID}
+          label="Favorites"
+          icon={Icons.Star}
+          onClick={handleScrollToGroup}
+        />
         <GroupIcon
           active={activeGroupId === RECENT_GROUP_ID}
           id={RECENT_GROUP_ID}
@@ -290,11 +306,13 @@ type EmojiGroupHolderProps = {
   previewAtom: PrimitiveAtom<PreviewData | undefined>;
   children?: ReactNode;
   onGroupItemClick: MouseEventHandler;
+  onGroupItemContextMenu?: MouseEventHandler;
 };
 function EmojiGroupHolder({
   contentScrollRef,
   previewAtom,
   onGroupItemClick,
+  onGroupItemContextMenu,
   children,
 }: EmojiGroupHolderProps) {
   const setPreviewData = useSetAtom(previewAtom);
@@ -332,6 +350,7 @@ function EmojiGroupHolder({
     <Scroll ref={contentScrollRef} size="400" onKeyDown={preventScrollWithArrowKey} hideTrack>
       <Box
         onClick={onGroupItemClick}
+        onContextMenu={onGroupItemContextMenu}
         onMouseMove={handleEmojiHover}
         onFocus={handleEmojiFocus}
         direction="Column"
@@ -363,6 +382,7 @@ type EmojiBoardProps = {
   onCustomEmojiSelect?: (mxc: string, shortcode: string) => void;
   onStickerSelect?: (mxc: string, shortcode: string, label: string) => void;
   onGifSelect?: (url: string, title: string, w: number, h: number) => void;
+  onNativeGifSelect?: (content: Record<string, unknown>) => void;
   allowTextCustomEmoji?: boolean;
   addToRecentEmoji?: boolean;
 };
@@ -377,6 +397,7 @@ export function EmojiBoard({
   onCustomEmojiSelect,
   onStickerSelect,
   onGifSelect,
+  onNativeGifSelect,
   allowTextCustomEmoji,
   addToRecentEmoji = true,
 }: EmojiBoardProps) {
@@ -446,11 +467,28 @@ export function EmojiBoard({
     }
     if (emojiInfo.type === EmojiType.CustomEmoji) {
       onCustomEmojiSelect?.(emojiInfo.data, emojiInfo.shortcode);
+      if (!evt.altKey && !evt.shiftKey && addToRecentEmoji) {
+        addRecentCustomEmoji(mx, emojiInfo.shortcode, emojiInfo.data, emojiInfo.label);
+      }
     }
     if (emojiInfo.type === EmojiType.Sticker) {
       onStickerSelect?.(emojiInfo.data, emojiInfo.shortcode, emojiInfo.label);
     }
     if (!evt.altKey && !evt.shiftKey) requestClose();
+  };
+
+  const handleGroupItemContextMenu: MouseEventHandler = (evt) => {
+    const targetEl = targetFromEvent(evt.nativeEvent, 'button');
+    const emojiInfo = targetEl && getEmojiItemInfo(targetEl);
+    if (!emojiInfo) return;
+    evt.preventDefault();
+    if (emojiInfo.type === EmojiType.Emoji) {
+      toggleFavoriteEmoji(mx, { type: 'e', key: emojiInfo.data, shortcode: emojiInfo.shortcode });
+    } else if (emojiInfo.type === EmojiType.CustomEmoji) {
+      toggleFavoriteEmoji(mx, {
+        type: 'c', key: emojiInfo.data, shortcode: emojiInfo.shortcode, body: emojiInfo.label,
+      });
+    }
   };
 
   const handleTextCustomEmojiSelect = (textEmoji: string) => {
@@ -533,6 +571,7 @@ export function EmojiBoard({
               requestClose={requestClose}
               returnFocusOnDeactivate={returnFocusOnDeactivate}
               onGifSelect={onGifSelect ?? (() => {})}
+              onNativeGifSelect={onNativeGifSelect}
               searchQuery={gifSearchQuery}
             />
           </Box>
@@ -591,6 +630,7 @@ export function EmojiBoard({
             contentScrollRef={contentScrollRef}
             previewAtom={previewAtom}
             onGroupItemClick={handleGroupItemClick}
+            onGroupItemContextMenu={handleGroupItemContextMenu}
           >
             {searchedItems && (
               <EmojiGroup
@@ -618,7 +658,13 @@ export function EmojiBoard({
                     key={vItem.index}
                   >
                     <EmojiGroup key={group.id} id={group.id} label={group.name}>
-                      {group.items.map(renderItem)}
+                      {group.id === FAVORITE_GROUP_ID && group.items.length === 0 ? (
+                        <span style={{ display: 'block', padding: '4px 12px 10px', opacity: 0.6, fontSize: '0.82em' }}>
+                          Right-click (or long-press) an emoji to add it to Favorites.
+                        </span>
+                      ) : (
+                        group.items.map(renderItem)
+                      )}
                     </EmojiGroup>
                   </VirtualTile>
                 );

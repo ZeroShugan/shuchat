@@ -4,6 +4,7 @@ import { IPusherRequest } from 'matrix-js-sdk';
 import { SequenceCard } from '../../../components/sequence-card';
 import { SequenceCardStyle } from '../styles.css';
 import { SettingTile } from '../../../components/setting-tile';
+import { RangeSlider } from '../../../components/range-slider';
 import { useSetting } from '../../../state/hooks/settings';
 import { settingsAtom } from '../../../state/settings';
 import { getNotificationState, usePermissionState } from '../../../hooks/usePermission';
@@ -154,33 +155,24 @@ export function SystemNotification() {
           title="App Sounds Volume"
           description={`Notifications, call ring, mute/deafen — ${Math.round((notificationVolume ?? 0.5) * 100)}%`}
           after={
-            <input type="range" min="0" max="1" step="0.05"
-              value={notificationVolume ?? 0.5}
-              onChange={(e) => setNotificationVolume(parseFloat(e.target.value))}
-              style={{ width: '140px', cursor: 'pointer' }}
-            />
+            <RangeSlider min={0} max={1} step={0.05}
+              value={notificationVolume ?? 0.5} onChange={setNotificationVolume} />
           }
         />
         <SettingTile
           title="Voice Volume"
           description={`People speaking in calls — ${Math.round((voiceVolume ?? 1) * 100)}%`}
           after={
-            <input type="range" min="0" max="1" step="0.05"
-              value={voiceVolume ?? 1}
-              onChange={(e) => setVoiceVolume(parseFloat(e.target.value))}
-              style={{ width: '140px', cursor: 'pointer' }}
-            />
+            <RangeSlider min={0} max={1} step={0.05}
+              value={voiceVolume ?? 1} onChange={setVoiceVolume} />
           }
         />
         <SettingTile
           title="Media Volume"
-          description={`Default for audio/video in chat — ${Math.round((mediaVolume ?? 0.8) * 100)}%`}
+          description={`Default for audio/video in chat — ${Math.round((mediaVolume ?? 0.5) * 100)}%`}
           after={
-            <input type="range" min="0" max="1" step="0.05"
-              value={mediaVolume ?? 0.8}
-              onChange={(e) => setMediaVolume(parseFloat(e.target.value))}
-              style={{ width: '140px', cursor: 'pointer' }}
-            />
+            <RangeSlider min={0} max={1} step={0.05}
+              value={mediaVolume ?? 0.5} onChange={setMediaVolume} />
           }
         />
       </SequenceCard>

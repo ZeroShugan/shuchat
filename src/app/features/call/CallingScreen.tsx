@@ -21,12 +21,13 @@ export function CallingScreen({ room, onHangup }: CallingScreenProps) {
   const useAuthentication = useMediaAuthentication();
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [declined, setDeclined] = useState(false);
-  const otherUserId = otherMember?.userId;
-  const verifStatus = useUserVerificationStatus(otherUserId);
 
-  // Get the other person in the DM
+  // Get the other person in the DM (must be declared before anything reads it —
+  // otherwise a temporal-dead-zone error crashes every outgoing call).
   const myUserId = mx.getSafeUserId();
   const otherMember = room.getMembers().find((m) => m.userId !== myUserId);
+  const otherUserId = otherMember?.userId;
+  const verifStatus = useUserVerificationStatus(otherUserId);
   const otherName = otherMember
     ? (getMemberDisplayName(room, otherMember.userId) ?? getMxIdLocalPart(otherMember.userId) ?? otherMember.userId)
     : 'Unknown';

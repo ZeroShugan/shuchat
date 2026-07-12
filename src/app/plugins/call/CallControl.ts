@@ -192,6 +192,17 @@ export class CallControl extends EventEmitter implements CallControlState {
     this.emitStateUpdate();
   }
 
+  /** Set the mic to an explicit state (used by push-to-talk). */
+  public async setMicrophone(enabled: boolean): Promise<void> {
+    if (this.microphone === enabled) return;
+    const payload: ElementMediaStatePayload = {
+      audio_enabled: enabled,
+      video_enabled: this.video,
+    };
+    // Element Call may not reply to device_mute — ignore timeout
+    await this.setMediaState(payload).catch(() => {});
+  }
+
   public toggleMicrophone() {
     const payload: ElementMediaStatePayload = {
       audio_enabled: !this.microphone,

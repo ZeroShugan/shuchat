@@ -12,6 +12,7 @@ import {
 import { callChatAtom, callEmbedAtom } from '../state/callEmbed';
 import { CallEmbed } from '../plugins/call';
 import { useSelectedRoom } from '../hooks/router/useSelectedRoom';
+import { usePushToTalk } from '../hooks/usePushToTalk';
 import { ScreenSize, useScreenSizeContext } from '../hooks/useScreenSize';
 
 function CallUtils({ embed }: { embed: CallEmbed }) {
@@ -36,6 +37,7 @@ export function CallEmbedProvider({ children }: CallEmbedProviderProps) {
   const callEmbed = useAtomValue(callEmbedAtom);
   const callEmbedRef = useRef<HTMLDivElement>(null);
   const joined = useCallJoined(callEmbed);
+  usePushToTalk(callEmbed, joined);
 
   const selectedRoom = useSelectedRoom();
   const chat = useAtomValue(callChatAtom);

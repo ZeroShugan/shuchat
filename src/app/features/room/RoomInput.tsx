@@ -278,6 +278,8 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
     };
 
     const handleSendUpload = async (uploads: UploadSuccess[]) => {
+      // eslint-disable-next-line no-console
+      console.info('[upload] handleSendUpload:', uploads.length, 'successful upload(s)');
       const contentsPromises = uploads.map(async (upload) => {
         const fileItem = selectedFiles.find((f) => f.file === upload.file);
         if (!fileItem) throw new Error('Broken upload');
@@ -294,8 +296,22 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
         return getFileMsgContent(fileItem, upload.mxc);
       });
       handleCancelUpload(uploads);
-      const contents = fulfilledPromiseSettledResult(await Promise.allSettled(contentsPromises));
-      contents.forEach((content) => mx.sendMessage(roomId, content as any));
+      const settled = await Promise.allSettled(contentsPromises);
+      settled
+        .filter((s) => s.status === 'rejected')
+        // eslint-disable-next-line no-console
+        .forEach((s) => console.warn('[upload] content build FAILED', (s as PromiseRejectedResult).reason));
+      const contents = fulfilledPromiseSettledResult(settled);
+      // eslint-disable-next-line no-console
+      console.info('[upload] sending', contents.length, 'message event(s)');
+      contents.forEach((content) =>
+        mx
+          .sendMessage(roomId, content as any)
+          // eslint-disable-next-line no-console
+          .then((r: { event_id: string }) => console.info('[upload] event sent', r.event_id))
+          // eslint-disable-next-line no-console
+          .catch((e: unknown) => console.warn('[upload] sendMessage FAILED', e))
+      );
     };
 
     const submit = useCallback(() => {
@@ -479,6 +495,17 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
       [mx, roomId]
     );
 
+    // Resend a favourited chat-sourced gif's ORIGINAL content verbatim — no re-upload, no
+    // re-fetch. This is what makes E2EE-favourited gifs actually work: handleGifSelect
+    // above can only handle Giphy's public https URLs (fetch + re-upload as new mxc://);
+    // an mxc:// pointing at an encrypted blob can't be fetch()'d or re-uploaded that way.
+    const handleNativeGifSelect = useCallback(
+      (content: Record<string, unknown>) => {
+        mx.sendMessage(roomId, content as any);
+      },
+      [mx, roomId]
+    );
+
     return (
       <div ref={ref}>
         {selectedFiles.length > 0 && (
@@ -657,6 +684,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
                         onCustomEmojiSelect={handleEmoticonSelect}
                         onStickerSelect={handleStickerSelect}
                         onGifSelect={handleGifSelect}
+                        onNativeGifSelect={handleNativeGifSelect}
                         requestClose={() => {
                           setEmojiBoardTab((t) => {
                             if (t) {

@@ -26,6 +26,7 @@ import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { UserAvatar } from '../../components/user-avatar';
 import { nameInitials } from '../../utils/common';
 import { Notifications } from './notifications';
+import { VoiceVideo } from './voice-video';
 import { Devices } from './devices';
 import { EmojisStickers } from './emojis-stickers';
 import { Miscellaneous } from './miscellaneous';
@@ -45,6 +46,7 @@ export enum SettingsPages {
   MiscellaneousPage,
   DeveloperToolsPage,
   AboutPage,
+  VoiceVideoPage,
 }
 
 type SettingsMenuItem = {
@@ -70,6 +72,11 @@ const useSettingsMenuItems = (): SettingsMenuItem[] =>
         page: SettingsPages.NotificationPage,
         name: 'Notifications',
         icon: Icons.Bell,
+      },
+      {
+        page: SettingsPages.VoiceVideoPage,
+        name: 'Voice & Video',
+        icon: Icons.Mic,
       },
       {
         page: SettingsPages.DevicesPage,
@@ -256,6 +263,9 @@ export function Settings({ initialPage, requestClose }: SettingsProps) {
       )}
       {activePage === SettingsPages.NotificationPage && (
         <Notifications requestClose={handlePageRequestClose} />
+      )}
+      {activePage === SettingsPages.VoiceVideoPage && (
+        <VoiceVideo requestClose={handlePageRequestClose} />
       )}
       {activePage === SettingsPages.DevicesPage && (
         <Devices requestClose={handlePageRequestClose} />

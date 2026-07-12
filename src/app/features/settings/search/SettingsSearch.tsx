@@ -4,6 +4,7 @@ import { Page, PageContent, PageHeader } from '../../../components/page';
 import { SequenceCard } from '../../../components/sequence-card';
 import { SequenceCardStyle } from '../styles.css';
 import { SettingTile } from '../../../components/setting-tile';
+import { RangeSlider } from '../../../components/range-slider';
 import { useSetting } from '../../../state/hooks/settings';
 import { settingsAtom, Settings as SettingsType, AutoSpoilerMode } from '../../../state/settings';
 import { SettingsPages } from '../Settings';
@@ -56,13 +57,12 @@ function VolumeControl({ settingKey, def }: { settingKey: keyof SettingsType; de
       <Text size="T200" priority="300">
         {Math.round(val * 100)}%
       </Text>
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.05"
+      <RangeSlider
+        min={0}
+        max={1}
+        step={0.05}
         value={val}
-        onChange={(e) => (setV as (n: number) => void)(parseFloat(e.target.value))}
+        onChange={setV as (n: number) => void}
       />
     </Box>
   );
@@ -102,12 +102,17 @@ export function SettingsSearch({ query, setQuery, onOpenPage }: SettingsSearchPr
       { id: 'notifsound', label: 'Notification Sounds', keywords: 'notification sound audio', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'bool', settingKey: 'isNotificationSounds' },
       { id: 'appvol', label: 'App Sounds Volume', keywords: 'notification volume app sound ring', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'notificationVolume', def: 0.5 },
       { id: 'voicevol', label: 'Voice Volume', keywords: 'voice call volume people speaking', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'voiceVolume', def: 1 },
-      { id: 'mediavol', label: 'Media Volume', keywords: 'media audio video volume', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'mediaVolume', def: 0.8 },
+      { id: 'mediavol', label: 'Media Volume', keywords: 'media audio video volume', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'mediaVolume', def: 0.5 },
       // ── Miscellaneous ──
       { id: 'spoilimg', label: 'Auto-Spoiler Images', keywords: 'spoiler blur images media', page: SettingsPages.MiscellaneousPage, pageName: 'Miscellaneous', kind: 'mode', settingKey: 'autoSpoilerImages' },
       { id: 'spoilgif', label: 'Auto-Spoiler GIFs', keywords: 'spoiler blur gif media', page: SettingsPages.MiscellaneousPage, pageName: 'Miscellaneous', kind: 'mode', settingKey: 'autoSpoilerGifs' },
       { id: 'spoilvid', label: 'Auto-Spoiler Videos', keywords: 'spoiler blur video media', page: SettingsPages.MiscellaneousPage, pageName: 'Miscellaneous', kind: 'mode', settingKey: 'autoSpoilerVideos' },
       // ── Developer ──
+      { id: 'vvns', label: 'Noise Suppression', keywords: 'voice call noise suppression background', page: SettingsPages.VoiceVideoPage, pageName: 'Voice & Video', kind: 'bool', settingKey: 'vvNoiseSuppression' },
+      { id: 'vvec', label: 'Echo Cancellation', keywords: 'voice call echo cancellation feedback', page: SettingsPages.VoiceVideoPage, pageName: 'Voice & Video', kind: 'bool', settingKey: 'vvEchoCancellation' },
+      { id: 'vvagc', label: 'Automatic Gain Control', keywords: 'voice call mic gain input level automatic', page: SettingsPages.VoiceVideoPage, pageName: 'Voice & Video', kind: 'bool', settingKey: 'vvAutoGainControl' },
+      { id: 'vvptt', label: 'Push to Talk', keywords: 'voice call push talk ptt keybind mute microphone', page: SettingsPages.VoiceVideoPage, pageName: 'Voice & Video', kind: 'bool', settingKey: 'vvPushToTalk' },
+      { id: 'vvsens', label: 'Automatic Sensitivity', keywords: 'voice call sensitivity gate microphone speaker device select input output test mic', page: SettingsPages.VoiceVideoPage, pageName: 'Voice & Video', kind: 'bool', settingKey: 'vvAutoSensitivity' },
       { id: 'devtools', label: 'Developer Tools', keywords: 'developer tools debug', page: SettingsPages.DeveloperToolsPage, pageName: 'Developer Tools', kind: 'bool', settingKey: 'developerTools' },
     ],
     []

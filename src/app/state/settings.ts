@@ -38,7 +38,7 @@ export interface Settings {
   showNotifications: boolean;
   isNotificationSounds: boolean;
   notificationVolume: number;  // app UI sounds 0.0–1.0
-  mediaVolume: number;          // chat audio/video default 0.0–1.0
+  mediaVolume: number;          // chat audio/video default 0.0–1.0 (0.5 = 50%)
   voiceVolume: number;          // call voice 0.0–1.0
   shareKeysWith: 'all' | 'verified' | 'cross-verified';  // device isolation mode
 
@@ -50,6 +50,19 @@ export interface Settings {
   autoSpoilerImages: AutoSpoilerMode;
   autoSpoilerGifs: AutoSpoilerMode;
   autoSpoilerVideos: AutoSpoilerMode;
+
+  // Voice & Video (calls) — also read by public/element-call/media-shim.js
+  vvMicDeviceId: string; // '' = system default
+  vvSpeakerDeviceId: string; // '' = system default
+  vvSpeakerLabel: string; // display label for Firefox's selectAudioOutput picker choice
+  vvMicGain: number; // input volume 0.0–2.0 (1 = 100%)
+  vvNoiseSuppression: boolean;
+  vvEchoCancellation: boolean;
+  vvAutoGainControl: boolean;
+  vvAutoSensitivity: boolean;
+  vvSensitivity: number; // manual gate threshold in dB, -100 = off
+  vvPushToTalk: boolean;
+  vvPttKey: string; // KeyboardEvent.code, '' = unset
 }
 
 const defaultSettings: Settings = {
@@ -80,7 +93,7 @@ const defaultSettings: Settings = {
   showNotifications: true,
   isNotificationSounds: true,
   notificationVolume: 0.5,
-  mediaVolume: 0.8,
+  mediaVolume: 0.5,
   voiceVolume: 1.0,
   shareKeysWith: 'all',
 
@@ -92,6 +105,18 @@ const defaultSettings: Settings = {
   autoSpoilerImages: 'off',
   autoSpoilerGifs: 'off',
   autoSpoilerVideos: 'off',
+
+  vvMicDeviceId: '',
+  vvSpeakerDeviceId: '',
+  vvSpeakerLabel: '',
+  vvMicGain: 1,
+  vvNoiseSuppression: true,
+  vvEchoCancellation: true,
+  vvAutoGainControl: true,
+  vvAutoSensitivity: true,
+  vvSensitivity: -100,
+  vvPushToTalk: false,
+  vvPttKey: '',
 };
 
 export const getSettings = (): Settings => {

@@ -17,6 +17,8 @@ import { mxcUrlToHttp } from '../../../utils/matrix';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { ImageUsage, PackImageReader } from '../../../plugins/custom-emoji';
 import { getEmoticonSearchStr } from '../../../plugins/utils';
+import { addRecentEmoji, addRecentCustomEmoji } from '../../../plugins/recent-emoji';
+import { useFavoriteEmojiKeys } from '../../../hooks/useFavoriteEmoji';
 
 type EmoticonCompleteHandler = (key: string, shortcode: string) => void;
 
@@ -48,11 +50,21 @@ export function EmoticonAutocomplete({
   const recentEmoji = useRecentEmoji(mx, 20);
 
   const searchList = useMemo(() => {
-    const list: Array<EmoticonSearchItem> = [];
-    return list.concat(
+    const all: Array<EmoticonSearchItem> = ([] as Array<EmoticonSearchItem>).concat(
       imagePacks.flatMap((pack) => pack.getImages(ImageUsage.Emoticon)),
       emojis
     );
+    // De-dup identical emojis (e.g. the same emote present in two packs) so the
+    // autocomplete never lists the same shortcode twice.
+    const seen = new Set<string>();
+    const list: Array<EmoticonSearchItem> = [];
+    all.forEach((it) => {
+      const dedupKey = ('url' in it ? it.url : it.unicode) + '|' + it.shortcode;
+      if (seen.has(dedupKey)) return;
+      seen.add(dedupKey);
+      list.push(it);
+    });
+    return list;
   }, [imagePacks]);
 
   const [result, search, resetSearch] = useAsyncSearch(
@@ -60,7 +72,23 @@ export function EmoticonAutocomplete({
     getEmoticonSearchStr,
     SEARCH_OPTIONS
   );
-  const autoCompleteEmoticon = result ? result.items.slice(0, 20) : recentEmoji;
+  const favoriteKeys = useFavoriteEmojiKeys(mx);
+  const sortedItems = useMemo(() => {
+    if (!result) return undefined;
+    const recentKeys = new Set(recentEmoji.map((e) => ('url' in e ? e.url : e.unicode)));
+    const rank = (it: EmoticonSearchItem) => {
+      const k = 'url' in it ? it.url : it.unicode;
+      if (favoriteKeys.has(k)) return 0;
+      if (recentKeys.has(k)) return 1;
+      return 2;
+    };
+    // stable sort: keep the fuzzy-match order within each rank
+    return result.items
+      .map((it, i) => [it, i] as const)
+      .sort((a, b) => rank(a[0]) - rank(b[0]) || a[1] - b[1])
+      .map(([it]) => it);
+  }, [result, recentEmoji, favoriteKeys]);
+  const autoCompleteEmoticon = sortedItems ? sortedItems.slice(0, 20) : recentEmoji;
 
   useEffect(() => {
     if (query.text) search(query.text);
@@ -71,6 +99,9 @@ export function EmoticonAutocomplete({
     const emoticonEl = createEmoticonElement(key, shortcode);
     replaceWithElement(editor, query.range, emoticonEl);
     moveCursor(editor, true);
+    // Typing :shortcode: counts as using the emoji → record it in Recent too.
+    if (key.startsWith('mxc://')) addRecentCustomEmoji(mx, shortcode, key);
+    else addRecentEmoji(mx, key);
     requestClose();
   };
 

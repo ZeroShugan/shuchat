@@ -80,7 +80,7 @@ export function AudioContent({
   const [mediaVolume] = useSetting(settingsAtom, 'mediaVolume');
   React.useEffect(() => {
     const el = audioRef.current;
-    if (el) setVolume(mediaVolume ?? 0.8);
+    if (el) setVolume(mediaVolume ?? 0.5);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   const handlePlayTimeCallback: PlayTimeCallback = useCallback((d, ct) => {

@@ -19,6 +19,13 @@ export enum AccountDataEvent {
 
   ShuChatUserNotes = 'im.shuchat.user_notes',
   ShuChatProfile = 'im.shuchat.profile',
+  // Recently-used custom/pack emoji (mxc:// images), tracked separately from
+  // io.element.recent_emoji (which only ever stores unicode codepoints) so a
+  // custom-emoji "recent" doesn't collide with — or get silently dropped by —
+  // other Element-family clients writing that shared key.
+  ShuChatRecentCustomEmoji = 'im.shuchat.recent_custom_emoji',
+  // Curated favourite emoji (unicode + custom), starred by the user.
+  ShuChatFavoriteEmoji = 'im.shuchat.favorite_emoji',
 }
 
 export type MDirectContent = Record<string, string[]>;

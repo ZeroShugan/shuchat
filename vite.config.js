@@ -18,6 +18,18 @@ const copyFiles = {
       dest: 'public/element-call',
     },
     {
+      // ShuChat Voice & Video: overwrite Element Call's index.html with a
+      // version that loads media-shim.js before the app bundle.
+      src: 'node_modules/@element-hq/element-call-embedded/dist/index.html',
+      dest: 'public/element-call',
+      transform: (content) =>
+        String(content).replace('<head>', '<head><script src="./media-shim.js"></script>'),
+    },
+    {
+      src: 'call-shim/media-shim.js',
+      dest: 'public/element-call',
+    },
+    {
       src: 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
       dest: '',
       rename: 'pdf.worker.min.js',

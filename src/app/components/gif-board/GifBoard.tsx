@@ -12,6 +12,8 @@ import { editableActiveElement } from '../../utils/dom';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useDebounce } from '../../hooks/useDebounce';
 import { mobileOrTablet } from '../../utils/user-agent';
+import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
+import { decryptFile, downloadEncryptedMedia, mxcUrlToHttp } from '../../utils/matrix';
 
 const GIPHY_KEY = 'kt1VsIL6e804ZVnPf49UkmsF8DKk5GIp';
 const FAV_KEY = 'shuchat_gif_favourites';
@@ -26,6 +28,10 @@ export type GiphyGif = {
 };
 export type FavGif = {
   id: string; title: string; previewUrl: string; sendUrl: string; w: number; h: number;
+  // ORIGINAL Matrix message content (msgtype/body/info + file-or-url), present for gifs
+  // favourited from the timeline (chat-sent/uploaded, incl. E2EE) so they can be resent
+  // verbatim. Absent for Giphy-sourced favourites (those use previewUrl/sendUrl directly).
+  nativeContent?: Record<string, unknown>;
 };
 type GiphyCategory = {
   name: string;
@@ -145,6 +151,96 @@ function MasonryGrid({ gifs, favIds, onSelect, onToggleFav }: MasonryProps) {
   return <div style={{ display: 'flex', gap: '6px', padding: '0 8px' }}>{col(c1)}{col(c2)}</div>;
 }
 
+// ── Favourites grid (chat-sourced gifs need on-demand decrypt/resolve; Giphy-sourced
+//    favourites already have a plain https previewUrl and skip straight to <img>) ────────
+const favThumbCache = new Map<string, string>();
+
+function FavGifThumb({ fav }: { fav: FavGif }) {
+  const mx = useMatrixClient();
+  const useAuthentication = useMediaAuthentication();
+  const [src, setSrc] = useState<string | undefined>(
+    fav.nativeContent ? favThumbCache.get(fav.id) : fav.previewUrl
+  );
+
+  useEffect(() => {
+    if (src || !fav.nativeContent) return;
+    let cancelled = false;
+    (async () => {
+      const nc = fav.nativeContent as { url?: string; file?: any; info?: { mimetype?: string } };
+      try {
+        if (nc.file) {
+          const httpUrl = mxcUrlToHttp(mx, nc.file.url, useAuthentication);
+          if (!httpUrl) return;
+          const token = mx.getAccessToken() ?? undefined;
+          const blob = await downloadEncryptedMedia(
+            httpUrl,
+            (buf) => decryptFile(buf, nc.info?.mimetype || 'image/gif', nc.file),
+            token
+          );
+          const url = URL.createObjectURL(blob);
+          if (cancelled) { URL.revokeObjectURL(url); return; }
+          favThumbCache.set(fav.id, url);
+          setSrc(url);
+        } else if (nc.url) {
+          const httpUrl = mxcUrlToHttp(mx, nc.url, useAuthentication);
+          if (httpUrl) { favThumbCache.set(fav.id, httpUrl); setSrc(httpUrl); }
+        }
+      } catch {
+        /* leave blank — placeholder stays */
+      }
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fav, mx, useAuthentication]);
+
+  if (!src) {
+    return (
+      <div style={{ width: '100%', aspectRatio: '1', borderRadius: '8px',
+        background: 'rgba(255,255,255,0.06)', marginBottom: '6px' }} />
+    );
+  }
+  return (
+    <img src={src} alt={fav.title}
+      style={{ width: '100%', height: 'auto', display: 'block', borderRadius: '8px', marginBottom: '6px' }}
+      loading="lazy" />
+  );
+}
+
+type FavMasonryProps = {
+  favs: FavGif[];
+  onSelectFav: (f: FavGif) => void;
+  onRemoveFav: (f: FavGif) => void;
+};
+function FavMasonryGrid({ favs, onSelectFav, onRemoveFav }: FavMasonryProps) {
+  const c1: FavGif[] = []; const c2: FavGif[] = [];
+  favs.forEach((f, i) => (i % 2 === 0 ? c1 : c2).push(f));
+  const col = (list: FavGif[]) => (
+    <div style={{ flex: 1 }}>
+      {list.map((f) => (
+        <div key={f.id}
+          style={{ position: 'relative', cursor: 'pointer', borderRadius: '8px',
+            overflow: 'hidden', width: '100%', lineHeight: 0 }}
+          onClick={() => onSelectFav(f)} title={f.title}
+        >
+          <FavGifThumb fav={f} />
+          <button type="button" onClick={(e) => { e.stopPropagation(); onRemoveFav(f); }}
+            style={{
+              position: 'absolute', top: '4px', right: '4px', background: '#f0a500',
+              border: 'none', borderRadius: '50%', width: '26px', height: '26px',
+              cursor: 'pointer', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', padding: 0,
+            }}
+            title="Remove favourite"
+          >
+            <Icon src={Icons.Star} size="50" filled style={{ color: '#fff' }} />
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+  return <div style={{ display: 'flex', gap: '6px', padding: '0 8px' }}>{col(c1)}{col(c2)}</div>;
+}
+
 // ── Category tile ─────────────────────────────────────────────────────────────
 type TileProps = { label: string; bgUrl?: string; tint?: string; onClick: () => void };
 function CategoryTile({ label, bgUrl, tint, onClick }: TileProps) {
@@ -242,12 +338,17 @@ export type GifContentProps = {
   requestClose: () => void;
   returnFocusOnDeactivate?: boolean;
   onGifSelect: (url: string, title: string, w: number, h: number) => void;
+  // Resend a favourited chat-sourced gif's ORIGINAL content verbatim (bypasses the
+  // Giphy download-and-reupload path — required for E2EE-favourited gifs to work).
+  onNativeGifSelect?: (content: Record<string, unknown>) => void;
   header?: React.ReactNode;
   /** When provided by EmojiBoard, search is controlled externally */
   searchQuery?: string;
 };
 
-export function GifContent({ requestClose, onGifSelect, header, searchQuery: externalQuery }: GifContentProps) {
+export function GifContent({
+  requestClose, onGifSelect, onNativeGifSelect, header, searchQuery: externalQuery,
+}: GifContentProps) {
   const mx = useMatrixClient();
   const [view, setView] = useState<'home' | 'browse' | 'search'>('home');
   const [browseTitle, setBrowseTitle] = useState('');
@@ -373,17 +474,24 @@ export function GifContent({ requestClose, onGifSelect, header, searchQuery: ext
     });
   }, []);
 
-  // Browse favourites gifs (convert FavGif → GiphyGif-like for MasonryGrid)
-  const browseGifs = view === 'browse' && browseTarget === 'favourites'
-    ? favourites.map((f): GiphyGif => ({
-        id: f.id, title: f.title,
-        images: {
-          fixed_height_small: { url: f.previewUrl, width: '200', height: '100' },
-          fixed_height: { url: f.previewUrl, width: '200', height: '200' },
-          original: { url: f.sendUrl, width: String(f.w), height: String(f.h) },
-        },
-      }))
-    : gifs;
+  const handleSelectFav = useCallback((f: FavGif) => {
+    if (f.nativeContent) {
+      // Chat-sourced (possibly E2EE) — resend the exact original content, no re-upload.
+      onNativeGifSelect?.(f.nativeContent);
+    } else {
+      onGifSelect(f.sendUrl, f.title, f.w, f.h);
+    }
+    requestClose();
+  }, [onGifSelect, onNativeGifSelect, requestClose]);
+
+  const handleRemoveFav = useCallback((f: FavGif) => {
+    setFavourites((prev) => {
+      const next = prev.filter((x) => x.id !== f.id);
+      saveFavs(next);
+      mx.setAccountData(ACCOUNT_DATA_TYPE, { favourites: next }).catch(() => {});
+      return next;
+    });
+  }, [mx]);
 
   return (
     <Box direction="Column" style={{ height: '100%' }}>
@@ -436,17 +544,23 @@ export function GifContent({ requestClose, onGifSelect, header, searchQuery: ext
               <Box justifyContent="Center" alignItems="Center" style={{ padding: '24px' }}>
                 <Text size="T300" style={{ opacity: 0.6 }}>{fetchError}</Text>
               </Box>
-            ) : browseGifs.length === 0 ? (
+            ) : browseTarget === 'favourites' ? (
+              favourites.length === 0 ? (
+                <Box justifyContent="Center" alignItems="Center" style={{ padding: '24px', flexDirection: 'column', gap: '8px' }}>
+                  <Text size="T400" style={{ opacity: 0.7 }}>⭐</Text>
+                  <Text size="T300" style={{ opacity: 0.6, textAlign: 'center' }}>
+                    No favourites yet — hover a GIF and click the ★ to save it
+                  </Text>
+                </Box>
+              ) : (
+                <FavMasonryGrid favs={favourites} onSelectFav={handleSelectFav} onRemoveFav={handleRemoveFav} />
+              )
+            ) : gifs.length === 0 ? (
               <Box justifyContent="Center" alignItems="Center" style={{ padding: '24px', flexDirection: 'column', gap: '8px' }}>
-                <Text size="T400" style={{ opacity: 0.7 }}>⭐</Text>
-                <Text size="T300" style={{ opacity: 0.6, textAlign: 'center' }}>
-                  {browseTarget === 'favourites'
-                    ? 'No favourites yet — hover a GIF and click the ★ to save it'
-                    : 'No GIFs found'}
-                </Text>
+                <Text size="T300" style={{ opacity: 0.6, textAlign: 'center' }}>No GIFs found</Text>
               </Box>
             ) : (
-              <MasonryGrid gifs={browseGifs} favIds={favIds}
+              <MasonryGrid gifs={gifs} favIds={favIds}
                 onSelect={handleSelect} onToggleFav={handleToggleFav} />
             )
           )}

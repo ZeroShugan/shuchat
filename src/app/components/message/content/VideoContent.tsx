@@ -32,6 +32,7 @@ import {
 } from '../../../utils/matrix';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { validBlurHash } from '../../../utils/blurHash';
+import { mp4ToFaststart } from '../../../plugins/mp4-faststart';
 import { useSetting } from '../../../state/hooks/settings';
 import { settingsAtom, autoSpoilerActive } from '../../../state/settings';
 
@@ -97,14 +98,39 @@ export const VideoContent = as<'div', VideoContentProps>(
               token
             )
           : await downloadMedia(mediaUrl, token);
-        return URL.createObjectURL(fileContent);
+        // Firefox can't play large blob MP4s whose moov (metadata) box is at the END of
+        // the file (non-web-optimized exports, e.g. Clipchamp): the <video> suspends at
+        // readyState 0 forever. Auto-remux those to faststart in memory (lossless box
+        // shuffle, ~30 ms for 60 MB) so every clip plays regardless of how it was exported.
+        let playable: Blob = fileContent;
+        try {
+          if ((mimeType || fileContent.type || '').includes('mp4')) {
+            const t0 = Date.now();
+            const fixed = mp4ToFaststart(await fileContent.arrayBuffer());
+            if (fixed) {
+              playable = new Blob([fixed], { type: mimeType || 'video/mp4' });
+              // eslint-disable-next-line no-console
+              console.info('[media] non-faststart mp4 auto-remuxed in', Date.now() - t0, 'ms');
+            }
+          }
+        } catch (e) {
+          // eslint-disable-next-line no-console
+          console.warn('[media] faststart remux skipped:', e);
+        }
+        // eslint-disable-next-line no-console
+        console.info('[media] objectURL created for video', body);
+        return URL.createObjectURL(playable);
       }, [mx, url, useAuthentication, mimeType, encInfo])
     );
 
     const handleLoad = () => {
+      // eslint-disable-next-line no-console
+      console.info('[media] video metadata loaded — playing', body);
       setLoad(true);
     };
     const handleError = () => {
+      // eslint-disable-next-line no-console
+      console.warn('[media] video element ERROR for', body);
       setLoad(false);
       setError(true);
     };

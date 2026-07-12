@@ -68,10 +68,19 @@ function GifImageWrapper({ content, outlined, mediaAutoLoad, isOwn }: GifImageWr
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
   const rawUrl = content.file?.url ?? content.url ?? '';
+  const mimetype = (content.info?.mimetype || '').toLowerCase();
+  const bodyLower = (content.body || '').toLowerCase();
+  // Animated images aren't always plain '.gif': Giphy shares are often webp, and mxc://
+  // urls never carry a file extension at all — so mimetype is the primary signal, with
+  // filename/body as a fallback for clients that omit it.
   const isGif =
-    content.info?.mimetype === 'image/gif' ||
+    mimetype === 'image/gif' ||
+    mimetype === 'image/webp' ||
     rawUrl.includes('giphy.com') ||
-    rawUrl.toLowerCase().endsWith('.gif');
+    rawUrl.toLowerCase().endsWith('.gif') ||
+    rawUrl.toLowerCase().endsWith('.webp') ||
+    bodyLower.endsWith('.gif') ||
+    bodyLower.endsWith('.webp');
 
   const [hovered, setHovered] = useState(false);
   const [isFav, setIsFav] = useState(false);
@@ -101,6 +110,15 @@ function GifImageWrapper({ content, outlined, mediaAutoLoad, isOwn }: GifImageWr
         if (stored.some((f) => f.id === rawUrl)) {
           next = stored.filter((f) => f.id !== rawUrl);
         } else {
+          // Store the ORIGINAL message content verbatim so this favourite can be resent
+          // exactly as received — required for E2EE gifs, where only `file` (with its AES
+          // key) is decryptable by recipients; a bare `url` to ciphertext is useless.
+          const nativeContent: Record<string, unknown> = {
+            msgtype: 'm.image',
+            body: content.body || 'GIF',
+            info: content.info,
+            ...(content.file ? { file: content.file } : { url: content.url }),
+          };
           next = [
             ...stored,
             {
@@ -110,6 +128,7 @@ function GifImageWrapper({ content, outlined, mediaAutoLoad, isOwn }: GifImageWr
               sendUrl: rawUrl,
               w: content.info?.w ?? 480,
               h: content.info?.h ?? 270,
+              nativeContent,
             },
           ];
         }
@@ -456,7 +475,12 @@ export function RenderMessageContent({
                     )
                   : undefined
               }
-              renderVideo={(p) => <Video {...p} ref={(el) => { if (el) el.volume = 0.5; }} />}
+              renderVideo={(p) => (
+                // preload="auto": Firefox suspends at readyState 0 on large blob videos whose
+                // moov atom sits at the END of the file (non-faststart exports, e.g. Clipchamp).
+                // Forcing full preload makes it read through to the metadata instead of giving up.
+                <Video {...p} preload="auto" ref={(el) => { if (el) el.volume = 0.5; }} />
+              )}
             />
           )}
           outlined={outlineAttachment}
