@@ -66,9 +66,19 @@ npm run dist     # build the Windows installer (electron-builder NSIS)
 ```
 
 Point it at your own instance by editing `config.json` in the app's user-data folder
-(`%AppData%\ShuChat\config.json` on Windows) — created on first run.
+(`%AppData%\ShuChat\config.json` on Windows, `~/.config/ShuChat/config.json` on Linux) — created on
+first run.
 
-Prebuilt Windows installers are attached to [GitHub Releases](../../releases).
+**Downloads** ([GitHub Releases](../../releases)):
+- Windows: `ShuChat-Setup-<version>.exe` (installer)
+- Linux: `ShuChat-<version>.AppImage` (portable) or `ShuChat-<version>.deb`
+
+**Auto-update:** the Windows install and the Linux AppImage check GitHub Releases on startup and every
+4 hours (and via tray → *Check for Updates…*); updates download in the background and apply on restart.
+The `.deb` updates through your package manager (re-download from Releases).
+
+Note: global push-to-talk on Linux requires X11 (uiohook has no Wayland global-key support — in-window
+PTT still works there).
 
 ## Credits & license
 

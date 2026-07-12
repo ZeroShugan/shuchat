@@ -3,7 +3,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('shuchatDesktop', {
-  version: '0.9.0',
+  platform: process.platform,
 });
 
 // Forward global PTT transitions to the page as DOM events (the web app's

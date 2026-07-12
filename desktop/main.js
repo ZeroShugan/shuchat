@@ -1,10 +1,96 @@
 // ShuChat desktop shell — loads the hosted web client in a native window.
 // Extras over the browser: tray, media permissions handled, and a TRUE global
 // push-to-talk (uiohook-napi) that works even when the window is unfocused.
-const { app, BrowserWindow, Tray, Menu, shell, ipcMain, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, ipcMain, session, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { codeToUiohook } = require('./keymap');
+
+// ---- auto-update (GitHub Releases feed) ----
+let autoUpdater = null;
+try {
+  // eslint-disable-next-line global-require
+  ({ autoUpdater } = require('electron-updater'));
+} catch (e) {
+  autoUpdater = null; // running from source without deps — updates disabled
+}
+let updateInteractive = false; // whether the current check was user-initiated
+let updateDownloaded = false;
+
+function setupAutoUpdater() {
+  if (!autoUpdater || !app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.autoInstallOnAppQuit = true; // updates apply on quit even if "Later"
+
+  autoUpdater.on('update-not-available', () => {
+    if (updateInteractive && win) {
+      updateInteractive = false;
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'ShuChat',
+        message: `You're up to date (v${app.getVersion()}).`,
+      });
+    }
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    updateDownloaded = true;
+    updateInteractive = false;
+    if (!win) return;
+    dialog
+      .showMessageBox(win, {
+        type: 'info',
+        title: 'ShuChat update',
+        message: `ShuChat v${info.version} has been downloaded.`,
+        detail: 'Restart now to apply the update, or it will install when you quit.',
+        buttons: ['Restart & Update', 'Later'],
+        defaultId: 0,
+        cancelId: 1,
+      })
+      .then((r) => {
+        if (r.response === 0) {
+          quitting = true;
+          autoUpdater.quitAndInstall();
+        }
+      });
+  });
+
+  autoUpdater.on('error', (err) => {
+    if (updateInteractive && win) {
+      updateInteractive = false;
+      dialog.showMessageBox(win, {
+        type: 'warning',
+        title: 'ShuChat update',
+        message: 'Could not check for updates.',
+        detail: String(err && err.message ? err.message : err),
+      });
+    }
+  });
+
+  // silent check shortly after start, then every 4 hours
+  setTimeout(() => autoUpdater.checkForUpdates().catch(() => {}), 10_000);
+  setInterval(() => autoUpdater.checkForUpdates().catch(() => {}), 4 * 60 * 60 * 1000);
+}
+
+function checkForUpdatesInteractive() {
+  if (!autoUpdater || !app.isPackaged) {
+    if (win) {
+      dialog.showMessageBox(win, {
+        type: 'info',
+        title: 'ShuChat',
+        message: 'Updates are only available in the installed app.',
+      });
+    }
+    return;
+  }
+  if (updateDownloaded) {
+    quitting = true;
+    autoUpdater.quitAndInstall();
+    return;
+  }
+  updateInteractive = true;
+  autoUpdater.checkForUpdates().catch(() => {});
+}
 
 const DEFAULT_SERVER_URL = 'https://shuchat.shugan.dev';
 
@@ -97,6 +183,7 @@ function createTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open ShuChat', click: () => { if (win) { win.show(); win.focus(); } } },
+      { label: 'Check for Updates…', click: () => checkForUpdatesInteractive() },
       { type: 'separator' },
       {
         label: 'Quit',
@@ -185,6 +272,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     createWindow();
     createTray();
+    setupAutoUpdater();
   });
 
   app.on('before-quit', () => {

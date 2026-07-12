@@ -1,7 +1,7 @@
 {
   "name": "shuchat-desktop",
   "productName": "ShuChat",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "ShuChat desktop app — Matrix client with calls, Voice & Video settings and global push-to-talk",
   "main": "main.js",
   "author": "Shugan",
@@ -12,6 +12,7 @@
     "dist": "electron-builder --win nsis"
   },
   "dependencies": {
+    "electron-updater": "^6.3.9",
     "uiohook-napi": "^1.5.4"
   },
   "devDependencies": {
@@ -21,7 +22,13 @@
   "build": {
     "appId": "dev.shugan.shuchat",
     "productName": "ShuChat",
-    "publish": null,
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "ZeroShugan",
+        "repo": "shuchat"
+      }
+    ],
     "files": [
       "main.js",
       "preload.js",
@@ -31,11 +38,21 @@
       "target": [
         "nsis"
       ],
+      "artifactName": "ShuChat-Setup-${version}.${ext}",
       "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": true,
       "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "artifactName": "ShuChat-${version}.${ext}",
+      "category": "Network",
+      "maintainer": "zeroshugan@gmail.com"
     }
   }
 }
