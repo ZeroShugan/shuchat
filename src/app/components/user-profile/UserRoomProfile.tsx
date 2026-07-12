@@ -14,6 +14,7 @@ import { usePowerLevels } from '../../hooks/usePowerLevels';
 import { useRoom } from '../../hooks/useRoom';
 import { useUserPresence } from '../../hooks/useUserPresence';
 import { IgnoredUserAlert, MutualRoomsChip, OptionsChip, ServerChip, ShareChip } from './UserChips';
+import { MutualInfo } from './MutualInfo';
 import { useCloseUserRoomProfile } from '../../state/hooks/userRoomProfile';
 import { useCallStart } from '../../hooks/useCallEmbed';
 import { useCallPreferences } from '../../state/hooks/callPreferences';
@@ -204,6 +205,7 @@ export function UserRoomProfile({ userId }: UserRoomProfileProps) {
             {userId !== myUserId && <MutualRoomsChip userId={userId} />}
             {userId !== myUserId && <OptionsChip userId={userId} />}
           </Box>
+          {userId !== myUserId && <MutualInfo userId={userId} />}
         </Box>
         {ignored && <IgnoredUserAlert />}
         {member && membership === Membership.Ban && (
