@@ -4,6 +4,8 @@ import classNames from 'classnames';
 import { ContainerColor } from '../../styles/ContainerColor.css';
 import * as css from './style.css';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
+import { usePanelWidth } from '../../hooks/usePanelWidth';
+import { ResizeHandle } from '../resize-handle';
 
 type PageRootProps = {
   nav: ReactNode;
@@ -30,16 +32,20 @@ type ClientDrawerLayoutProps = {
 export function PageNav({ size, children }: ClientDrawerLayoutProps & css.PageNavVariants) {
   const screenSize = useScreenSizeContext();
   const isMobile = screenSize === ScreenSize.Mobile;
+  // One shared, persisted width for all nav columns (drag the right edge).
+  const [navWidth, onResizePointerDown] = usePanelWidth('nav', 256, 180, 420, 'end');
 
   return (
     <Box
       grow={isMobile ? 'Yes' : undefined}
       className={css.PageNav({ size })}
       shrink={isMobile ? 'Yes' : 'No'}
+      style={isMobile ? undefined : { width: navWidth, position: 'relative' }}
     >
       <Box grow="Yes" direction="Column">
         {children}
       </Box>
+      {!isMobile && <ResizeHandle edge="end" onPointerDown={onResizePointerDown} />}
     </Box>
   );
 }

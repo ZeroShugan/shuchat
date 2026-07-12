@@ -6,6 +6,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { usePanelWidth } from '../../hooks/usePanelWidth';
+import { ResizeHandle } from '../../components/resize-handle';
 import {
   Avatar,
   Badge,
@@ -265,12 +267,17 @@ export function MembersDrawer({ room, members }: MembersDrawerProps) {
     openUserRoomProfile(room.roomId, space?.roomId, userId, btn.getBoundingClientRect(), 'Left');
   };
 
+  // Persisted, drag-resizable width (drag the drawer's left edge).
+  const [drawerWidth, onResizePointerDown] = usePanelWidth('members-drawer', 266, 200, 480, 'start');
+
   return (
     <Box
       className={classNames(css.MembersDrawer, ContainerColor({ variant: 'Background' }))}
       shrink="No"
       direction="Column"
+      style={{ width: drawerWidth, position: 'relative' }}
     >
+      <ResizeHandle edge="start" onPointerDown={onResizePointerDown} />
       <MemberDrawerHeader room={room} />
       <Box className={css.MemberDrawerContentBase} grow="Yes">
         <Scroll ref={scrollRef} variant="Background" size="300" visibility="Hover" hideTrack>
