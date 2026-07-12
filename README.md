@@ -66,7 +66,7 @@ npm run dist     # build the Windows installer (electron-builder NSIS)
 ```
 
 Point it at your own instance by editing `config.json` in the app's user-data folder
-(`%AppData%/shuchat-desktop/config.json` on Windows) — created on first run.
+(`%AppData%\ShuChat\config.json` on Windows) — created on first run.
 
 Prebuilt Windows installers are attached to [GitHub Releases](../../releases).
 

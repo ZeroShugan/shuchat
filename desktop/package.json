@@ -6,6 +6,7 @@
   "main": "main.js",
   "author": "Shugan",
   "license": "AGPL-3.0-only",
+  "repository": "github:ZeroShugan/shuchat",
   "scripts": {
     "start": "electron .",
     "dist": "electron-builder --win nsis"
@@ -20,6 +21,7 @@
   "build": {
     "appId": "dev.shugan.shuchat",
     "productName": "ShuChat",
+    "publish": null,
     "files": [
       "main.js",
       "preload.js",
@@ -28,7 +30,8 @@
     "win": {
       "target": [
         "nsis"
-      ]
+      ],
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": true,
