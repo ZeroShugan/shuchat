@@ -16,13 +16,27 @@ try {
 }
 let updateInteractive = false; // whether the current check was user-initiated
 let updateDownloaded = false;
+let lastUpdateState = { status: 'idle', version: null };
+
+// Broadcast updater status to the web app (Settings → Updates + bottom-left pill).
+function sendUpdateState(status, version) {
+  lastUpdateState = { status, version: version ?? null, current: app.getVersion() };
+  if (win && !win.isDestroyed()) win.webContents.send('shuchat-update-state', lastUpdateState);
+}
 
 function setupAutoUpdater() {
   if (!autoUpdater || !app.isPackaged) return;
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true; // updates apply on quit even if "Later"
 
+  autoUpdater.on('checking-for-update', () => sendUpdateState('checking'));
+  autoUpdater.on('update-available', (info) => sendUpdateState('downloading', info?.version));
+  autoUpdater.on('download-progress', () => {
+    if (lastUpdateState.status !== 'downloading') sendUpdateState('downloading', lastUpdateState.version);
+  });
+
   autoUpdater.on('update-not-available', () => {
+    sendUpdateState('none');
     if (updateInteractive && win) {
       updateInteractive = false;
       dialog.showMessageBox(win, {
@@ -36,6 +50,7 @@ function setupAutoUpdater() {
   autoUpdater.on('update-downloaded', (info) => {
     updateDownloaded = true;
     updateInteractive = false;
+    sendUpdateState('ready', info?.version);
     if (!win) return;
     dialog
       .showMessageBox(win, {
@@ -56,6 +71,7 @@ function setupAutoUpdater() {
   });
 
   autoUpdater.on('error', (err) => {
+    sendUpdateState('error');
     if (updateInteractive && win) {
       updateInteractive = false;
       dialog.showMessageBox(win, {
@@ -166,6 +182,64 @@ function createWindow() {
     }
   });
 
+  // Right-click context menu (Electron has none by default): cut/copy/paste in
+  // inputs, copy for selected text, spellcheck suggestions, image copy/save.
+  win.webContents.on('context-menu', (_e, params) => {
+    const items = [];
+    for (const s of params.dictionarySuggestions || []) {
+      items.push({
+        label: s,
+        click: () => win.webContents.replaceMisspelling(s),
+      });
+    }
+    if (params.misspelledWord) {
+      items.push(
+        {
+          label: 'Add to dictionary',
+          click: () =>
+            win.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord),
+        },
+        { type: 'separator' }
+      );
+    }
+    if (params.isEditable) {
+      items.push(
+        { role: 'undo', enabled: params.editFlags.canUndo },
+        { role: 'redo', enabled: params.editFlags.canRedo },
+        { type: 'separator' },
+        { role: 'cut', enabled: params.editFlags.canCut },
+        { role: 'copy', enabled: params.editFlags.canCopy },
+        { role: 'paste', enabled: params.editFlags.canPaste },
+        { role: 'selectAll' }
+      );
+    } else if (params.selectionText && params.selectionText.trim()) {
+      items.push({ role: 'copy' });
+    }
+    if (params.mediaType === 'image') {
+      if (items.length) items.push({ type: 'separator' });
+      items.push({ role: 'copyImage', label: 'Copy image' });
+    }
+    if (params.linkURL) {
+      if (items.length) items.push({ type: 'separator' });
+      items.push({
+        label: 'Copy link address',
+        click: () => require('electron').clipboard.writeText(params.linkURL),
+      });
+    }
+    if (items.length) Menu.buildFromTemplate(items).popup({ window: win });
+  });
+
+  // Keep the app version visible in the window title (page titles still show).
+  win.on('page-title-updated', (e, title) => {
+    e.preventDefault();
+    win.setTitle(`${title} — v${app.getVersion()}`);
+  });
+
+  // Re-send updater state after (re)loads so the web UI never misses it.
+  win.webContents.on('did-finish-load', () => {
+    win.webContents.send('shuchat-update-state', lastUpdateState);
+  });
+
   win.webContents.session.clearCache().finally(() => {
     win.loadURL(cfg.serverUrl);
   });
@@ -235,6 +309,19 @@ function ensureUiohook() {
   }
   return uio;
 }
+
+// ---- updater IPC for the in-app UI ----
+ipcMain.handle('shuchat-get-version', () => app.getVersion());
+ipcMain.on('shuchat-check-updates', () => {
+  if (autoUpdater && app.isPackaged) autoUpdater.checkForUpdates().catch(() => {});
+  else sendUpdateState('none');
+});
+ipcMain.on('shuchat-install-update', () => {
+  if (autoUpdater && updateDownloaded) {
+    quitting = true;
+    autoUpdater.quitAndInstall();
+  }
+});
 
 ipcMain.on('shuchat-ptt-config', (_evt, { enabled, code }) => {
   const keycode = enabled && code ? codeToUiohook[code] : undefined;

@@ -1,9 +1,36 @@
-// ShuChat desktop preload — bridges the global push-to-talk hotkey between the
-// main process (uiohook) and the web app, and reports the app's PTT settings.
+// ShuChat desktop preload — bridges global push-to-talk and the auto-updater
+// between the main process and the web app.
 const { contextBridge, ipcRenderer } = require('electron');
+
+// ---- update state bridge ----
+let updateState = { status: 'idle', version: null };
+const updateListeners = new Set();
+ipcRenderer.on('shuchat-update-state', (_evt, state) => {
+  updateState = state;
+  updateListeners.forEach((cb) => {
+    try {
+      cb(state);
+    } catch (e) {
+      /* listener error — ignore */
+    }
+  });
+});
 
 contextBridge.exposeInMainWorld('shuchatDesktop', {
   platform: process.platform,
+  getVersion: () => ipcRenderer.invoke('shuchat-get-version'),
+  getUpdateState: () => updateState,
+  onUpdateState: (cb) => {
+    updateListeners.add(cb);
+    try {
+      cb(updateState);
+    } catch (e) {
+      /* ignore */
+    }
+    return () => updateListeners.delete(cb);
+  },
+  checkForUpdates: () => ipcRenderer.send('shuchat-check-updates'),
+  installUpdate: () => ipcRenderer.send('shuchat-install-update'),
 });
 
 // Forward global PTT transitions to the page as DOM events (the web app's
