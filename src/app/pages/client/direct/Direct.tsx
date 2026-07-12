@@ -1,4 +1,5 @@
-import React, { MouseEventHandler, forwardRef, useMemo, useRef, useState } from 'react';
+import React, { MouseEventHandler, forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import { RoomEvent as MatrixRoomEvent } from 'matrix-js-sdk';
 import { useAtom, useAtomValue } from 'jotai';
 import {
   Avatar,
@@ -189,13 +190,34 @@ export function Direct() {
 
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Re-sort when any DM gets new activity (including our own sends) — the
+  // order previously only refreshed when switching rooms.
+  const [activityTick, setActivityTick] = useState(0);
+  useEffect(() => {
+    let t: ReturnType<typeof setTimeout> | undefined;
+    const onTimeline = (_evt: unknown, room?: { roomId: string }) => {
+      if (!room || !directs.includes(room.roomId)) return;
+      if (t) return; // debounce bursts
+      t = setTimeout(() => {
+        t = undefined;
+        setActivityTick((v) => v + 1);
+      }, 250);
+    };
+    mx.on(MatrixRoomEvent.Timeline, onTimeline as never);
+    return () => {
+      mx.off(MatrixRoomEvent.Timeline, onTimeline as never);
+      if (t) clearTimeout(t);
+    };
+  }, [mx, directs]);
+
   const sortedDirects = useMemo(() => {
     const items = Array.from(directs).sort(factoryRoomIdByActivity(mx));
     if (closedCategories.has(DEFAULT_CATEGORY_ID)) {
       return items.filter((rId) => roomToUnread.has(rId) || rId === selectedRoomId);
     }
     return items;
-  }, [mx, directs, closedCategories, roomToUnread, selectedRoomId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mx, directs, closedCategories, roomToUnread, selectedRoomId, activityTick]);
 
   const filteredDirects = useMemo(() => {
     if (!searchQuery.trim()) return sortedDirects;

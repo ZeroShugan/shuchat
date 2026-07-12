@@ -883,11 +883,12 @@ export const Message = as<'div', MessageProps>(
 
     const isThreadedMessage = mEvent.threadRootId !== undefined;
 
+    // Only RED (untrusted device) gets a border. GREY just means the keys came
+    // from key backup on a new session (authenticity unknown) — showing it as an
+    // orange bar confused users into thinking messages were unread.
     const containerStyle: React.CSSProperties | undefined =
       trustColour === EventShieldColour.RED
         ? { borderLeft: '3px solid rgba(248,113,113,0.6)', paddingLeft: 6 }
-        : trustColour === EventShieldColour.GREY
-        ? { borderLeft: '3px solid rgba(217,119,6,0.6)', paddingLeft: 6 }
         : undefined;
 
     return (
@@ -904,8 +905,6 @@ export const Message = as<'div', MessageProps>(
         title={
           trustColour === EventShieldColour.RED
             ? 'Encryption notice: sent from an untrusted device (red bar).'
-            : trustColour === EventShieldColour.GREY
-            ? "Encryption notice: the sender's device is not verified (orange bar). Not an unread marker."
             : undefined
         }
         {...props}

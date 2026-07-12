@@ -192,7 +192,9 @@ export const MessageTextBody = recipe({
     jumboEmoji: {
       true: {
         fontSize: '1.504em',
-        lineHeight: '1.4962em',
+        // taller line box: big emoji glyphs overflow upward and covered the
+        // sender name when the emoji was the first message of a group
+        lineHeight: 1.35,
       },
     },
     emote: {
