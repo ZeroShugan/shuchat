@@ -1,4 +1,6 @@
 import React, { useRef } from 'react';
+import { usePanelWidth } from '../../hooks/usePanelWidth';
+import { ResizeHandle } from '../../components/resize-handle';
 import { Scroll } from 'folds';
 
 import {

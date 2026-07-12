@@ -1,4 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { usePanelWidth } from '../../hooks/usePanelWidth';
+import { ResizeHandle } from '../../components/resize-handle';
 import {
   Box, Text, Icon, Icons, IconButton, config, color, Line, Spinner, Button,
 } from 'folds';
