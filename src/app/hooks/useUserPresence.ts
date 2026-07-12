@@ -28,6 +28,31 @@ export const useUserPresence = (userId: string): UserPresence | undefined => {
 
   const [presence, setPresence] = useState(() => (user ? getUserPresence(user) : undefined));
 
+  // The sync stream only carries presence for users we share active sync
+    // windows with — the cached User object can go stale (e.g. profile says
+    // Offline while the room list dot says Online). Fetch the authoritative
+    // state once per mount so every surface agrees.
+  useEffect(() => {
+    let disposed = false;
+    mx.getPresence(userId)
+      .then((p) => {
+        if (disposed) return;
+        setPresence((prev) => ({
+          presence: (p.presence as Presence) ?? Presence.Offline,
+          status: p.status_msg ?? prev?.status,
+          active: p.currently_active ?? prev?.active ?? false,
+          lastActiveTs:
+            typeof p.last_active_ago === 'number'
+              ? Date.now() - p.last_active_ago
+              : prev?.lastActiveTs,
+        }));
+      })
+      .catch(() => {}); // no permission / federation error — keep cached value
+    return () => {
+      disposed = true;
+    };
+  }, [mx, userId]);
+
   useEffect(() => {
     const updatePresence: UserEventHandlerMap[UserEvent.Presence] = (event, u) => {
       if (u.userId === user?.userId) {
