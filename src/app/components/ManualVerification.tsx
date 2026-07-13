@@ -142,6 +142,19 @@ export function ManualVerificationTile({
       await crypto.bootstrapSecretStorage({});
 
       await crypto.loadSessionBackupPrivateKeyFromSecretStorage();
+
+      // bootstrapCrossSigning imports the cross-signing private keys from 4S but
+      // does NOT always sign THIS device — leaving it unverified (red shield on
+      // own messages, lingering banner). Explicitly cross-sign the current
+      // device so its verification actually completes.
+      const ownDeviceId = mx.getDeviceId();
+      if (ownDeviceId) {
+        try {
+          await crypto.crossSignDevice(ownDeviceId);
+        } catch (e) {
+          // already signed / not needed — safe to ignore
+        }
+      }
     },
     [mx, secretStorageKeyId]
   );
