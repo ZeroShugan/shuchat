@@ -65,7 +65,8 @@ function setupAutoUpdater() {
       .then((r) => {
         if (r.response === 0) {
           quitting = true;
-          autoUpdater.quitAndInstall();
+          // isSilent=true → no NSIS wizard, installs in the background & relaunches
+          autoUpdater.quitAndInstall(true, true);
         }
       });
   });
@@ -101,7 +102,7 @@ function checkForUpdatesInteractive() {
   }
   if (updateDownloaded) {
     quitting = true;
-    autoUpdater.quitAndInstall();
+    autoUpdater.quitAndInstall(true, true);
     return;
   }
   updateInteractive = true;
@@ -113,9 +114,9 @@ const DEFAULT_SERVER_URL = 'https://shuchat.shugan.dev';
 // ---- config (self-hosters can point the app at their own instance) ----
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 function readConfig() {
-  // minimizeToTray:false → the X button quits (what most users expect).
-  // Set it true in config.json to keep ShuChat running in the tray on close.
-  const defaults = { serverUrl: DEFAULT_SERVER_URL, minimizeToTray: false };
+  // closeAction: remembered choice for the X button — 'tray' | 'quit' | undefined.
+  // When undefined the app asks each time (Minimize to Tray / Restart / Close).
+  const defaults = { serverUrl: DEFAULT_SERVER_URL, closeAction: undefined };
   try {
     return { ...defaults, ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) };
   } catch (e) {
@@ -134,6 +135,30 @@ function writeConfig(cfg) {
 let win = null;
 let tray = null;
 let quitting = false;
+
+// Carry out a close-window choice. `e` is the close event when called from the
+// close handler (so we can preventDefault for tray/cancel).
+function applyCloseAction(action, e) {
+  if (action === 'tray') {
+    if (e) e.preventDefault();
+    if (!tray) createTray();
+    if (tray) {
+      win.hide();
+    } else {
+      // tray couldn't be created — fall back to quitting rather than a ghost window
+      quitting = true;
+      app.quit();
+    }
+  } else if (action === 'restart') {
+    quitting = true;
+    app.relaunch();
+    app.exit(0);
+  } else {
+    // 'quit'
+    quitting = true;
+    app.quit();
+  }
+}
 
 function createWindow() {
   const cfg = readConfig();
@@ -177,16 +202,36 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  // Close = quit by default. Only minimize to tray if the user opted in AND a
-  // tray icon actually exists (otherwise the window would vanish with no way
-  // back — the earlier "app won't close" bug).
+  // Close button → ask what to do (unless a remembered choice exists).
   win.on('close', (e) => {
-    if (!quitting && cfg.minimizeToTray && tray) {
-      e.preventDefault();
-      win.hide();
-    } else {
-      quitting = true;
+    if (quitting) return;
+    const remembered = readConfig().closeAction; // 'tray' | 'quit' | undefined
+    if (remembered) {
+      applyCloseAction(remembered, e);
+      return;
     }
+    e.preventDefault();
+    dialog
+      .showMessageBox(win, {
+        type: 'question',
+        title: 'Close ShuChat',
+        message: 'What would you like to do?',
+        buttons: ['Minimize to Tray', 'Restart', 'Close', 'Cancel'],
+        defaultId: 0,
+        cancelId: 3,
+        checkboxLabel: 'Remember my choice',
+        checkboxChecked: false,
+        noLink: true,
+      })
+      .then(({ response, checkboxChecked }) => {
+        const action = response === 0 ? 'tray' : response === 1 ? 'restart' : response === 2 ? 'quit' : 'cancel';
+        if (action === 'cancel') return;
+        // Only 'tray' and 'quit' are persistable (restart isn't a close-mode).
+        if (checkboxChecked && (action === 'tray' || action === 'quit')) {
+          writeConfig({ ...readConfig(), closeAction: action });
+        }
+        applyCloseAction(action);
+      });
   });
 
   // Right-click context menu (Electron has none by default): cut/copy/paste in
@@ -261,11 +306,13 @@ function createWindow() {
 }
 
 function createTray() {
+  if (tray) return; // idempotent — may be created on demand from the close dialog
   // Uses the app's own executable icon on Windows.
   const trayIconPath = process.execPath;
   try {
     tray = new Tray(trayIconPath);
   } catch (e) {
+    tray = null;
     return; // tray is best-effort
   }
   tray.setToolTip('ShuChat');
@@ -334,7 +381,7 @@ ipcMain.on('shuchat-check-updates', () => {
 ipcMain.on('shuchat-install-update', () => {
   if (autoUpdater && updateDownloaded) {
     quitting = true;
-    autoUpdater.quitAndInstall();
+    autoUpdater.quitAndInstall(true, true);
   }
 });
 
@@ -373,7 +420,8 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     createWindow();
-    if (readConfig().minimizeToTray) createTray();
+    // Pre-create the tray only if the user has chosen to keep the app in tray.
+    if (readConfig().closeAction === 'tray') createTray();
     setupAutoUpdater();
   });
 
