@@ -12,3 +12,5 @@ devAssets
 # desktop app build artifacts
 desktop/node_modules/
 desktop/dist/
+desktop/tools/
+desktop/dist/

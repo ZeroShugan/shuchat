@@ -1,7 +1,7 @@
 {
   "name": "shuchat-desktop",
   "productName": "ShuChat",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "description": "ShuChat desktop app — Matrix client with calls, Voice & Video settings and global push-to-talk",
   "main": "main.js",
   "author": "Shugan",
@@ -22,6 +22,7 @@
   "build": {
     "appId": "dev.shugan.shuchat",
     "productName": "ShuChat",
+    "afterPack": "./afterPack.js",
     "publish": [
       {
         "provider": "github",

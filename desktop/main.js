@@ -113,10 +113,13 @@ const DEFAULT_SERVER_URL = 'https://shuchat.shugan.dev';
 // ---- config (self-hosters can point the app at their own instance) ----
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 function readConfig() {
+  // minimizeToTray:false → the X button quits (what most users expect).
+  // Set it true in config.json to keep ShuChat running in the tray on close.
+  const defaults = { serverUrl: DEFAULT_SERVER_URL, minimizeToTray: false };
   try {
-    return { serverUrl: DEFAULT_SERVER_URL, ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) };
+    return { ...defaults, ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) };
   } catch (e) {
-    return { serverUrl: DEFAULT_SERVER_URL };
+    return defaults;
   }
 }
 function writeConfig(cfg) {
@@ -174,11 +177,15 @@ function createWindow() {
     return { action: 'allow' };
   });
 
-  // Close = minimize to tray (Discord-style); real quit via tray menu.
+  // Close = quit by default. Only minimize to tray if the user opted in AND a
+  // tray icon actually exists (otherwise the window would vanish with no way
+  // back — the earlier "app won't close" bug).
   win.on('close', (e) => {
-    if (!quitting) {
+    if (!quitting && cfg.minimizeToTray && tray) {
       e.preventDefault();
       win.hide();
+    } else {
+      quitting = true;
     }
   });
 
@@ -240,7 +247,15 @@ function createWindow() {
     win.webContents.send('shuchat-update-state', lastUpdateState);
   });
 
-  win.webContents.session.clearCache().finally(() => {
+  // The web app registers a service worker (VitePWA) that caches the JS bundle.
+  // In a thin shell that always wants the freshly deployed site, that stale
+  // cache made the app lag behind the browser (e.g. old encryption-shield
+  // colours lingering). Clear the SW + cache storage + HTTP cache each launch.
+  const ses = win.webContents.session;
+  Promise.allSettled([
+    ses.clearCache(),
+    ses.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }),
+  ]).finally(() => {
     win.loadURL(cfg.serverUrl);
   });
 }
@@ -358,7 +373,7 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     createWindow();
-    createTray();
+    if (readConfig().minimizeToTray) createTray();
     setupAutoUpdater();
   });
 
@@ -374,7 +389,8 @@ if (!gotLock) {
   });
 
   app.on('window-all-closed', () => {
-    // stay in tray on Windows/Linux; quit handled via tray menu
-    if (process.platform === 'darwin') return;
+    // Quit when the window is gone (close = quit by default). With tray mode
+    // the window is hidden, not destroyed, so this doesn't fire.
+    if (process.platform !== 'darwin') app.quit();
   });
 }
