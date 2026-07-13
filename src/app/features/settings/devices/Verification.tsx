@@ -122,6 +122,15 @@ export function VerifyCurrentDeviceTile({
             <Text as="a" size="T200" onClick={() => setLearnMore(!learnMore)}>
               <b>{learnMore ? 'View Less' : 'Learn More'}</b>
             </Text>
+            {manualVerification && (
+              <Text size="T200" style={{ marginTop: 8, opacity: 0.85 }}>
+                Entered your key but this warning won't go away (or your messages still
+                show as unverified to others)? Your session's encryption keys may be in a
+                bad state. <b>Log out of this session and log back in</b>, then verify
+                again — a fresh session rebuilds the keys cleanly. Your messages are safe:
+                they're restored from your encrypted backup on sign-in.
+              </Text>
+            )}
           </>
         }
         after={
