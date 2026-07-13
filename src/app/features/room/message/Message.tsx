@@ -815,11 +815,12 @@ export const Message = as<'div', MessageProps>(
       </AvatarBase>
     );
 
+    // Only RED (untrusted device) tints the text. GREY = keys restored from
+    // backup on a new session (authenticity unknown); tinting it orange looked
+    // like an unread/error marker and differed per-session vs the browser.
     const trustStyle: React.CSSProperties | undefined =
       trustColour === EventShieldColour.RED
         ? { color: 'rgba(248,113,113,0.9)' }
-        : trustColour === EventShieldColour.GREY
-        ? { color: 'rgba(217,119,6,0.9)' }
         : undefined;
 
     const msgContentJSX = (

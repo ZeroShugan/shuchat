@@ -732,7 +732,17 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         // keep paginating timeline and conditionally mark as read
         // otherwise we update timeline without paginating
         // so timeline can be updated with evt like: edits, reactions etc
-        if (atBottomRef.current) {
+        // The IntersectionObserver that maintains atBottom is debounced (1s) and
+        // can get stuck false when layout shifts (e.g. opening the emoji menu).
+        // So also measure the real scroll position: if the user is genuinely
+        // near the live bottom, treat it as at-bottom and auto-scroll.
+        const scrollEl = scrollRef.current;
+        const nearLiveBottom =
+          !!scrollEl &&
+          atLiveEndRef.current &&
+          scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.offsetHeight < 200;
+        if (atBottomRef.current || nearLiveBottom) {
+          if (nearLiveBottom && !atBottomRef.current) setAtBottom(true);
           if (document.hasFocus() && (!unreadInfo || mEvt.getSender() === mx.getUserId())) {
             // Check if the document is in focus (user is actively viewing the app),
             // and either there are no unread messages or the latest message is from the current user.
