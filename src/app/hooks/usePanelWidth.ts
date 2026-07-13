@@ -24,7 +24,7 @@ export const usePanelWidth = (
   min: number,
   max: number,
   edge: 'start' | 'end'
-): [number, (e: ReactPointerEvent<HTMLElement>) => void] => {
+): [number, (e: ReactPointerEvent<HTMLElement>) => void, () => void] => {
   const storageKey = STORAGE_PREFIX + key;
   const [width, setWidth] = useState<number>(() => {
     const raw = localStorage.getItem(storageKey);
@@ -61,5 +61,14 @@ export const usePanelWidth = (
     [width, min, max, edge, storageKey]
   );
 
-  return useMemo(() => [width, onHandlePointerDown], [width, onHandlePointerDown]);
+  // double-clicking a handle restores the default width
+  const reset = useCallback(() => {
+    localStorage.removeItem(storageKey);
+    setWidth(defaultWidth);
+  }, [storageKey, defaultWidth]);
+
+  return useMemo(
+    () => [width, onHandlePointerDown, reset],
+    [width, onHandlePointerDown, reset]
+  );
 };

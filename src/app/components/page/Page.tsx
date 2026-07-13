@@ -33,7 +33,7 @@ export function PageNav({ size, children }: ClientDrawerLayoutProps & css.PageNa
   const screenSize = useScreenSizeContext();
   const isMobile = screenSize === ScreenSize.Mobile;
   // One shared, persisted width for all nav columns (drag the right edge).
-  const [navWidth, onResizePointerDown] = usePanelWidth('nav', 256, 180, 420, 'end');
+  const [navWidth, onResizePointerDown, resetNavWidth] = usePanelWidth('nav', 256, 180, 420, 'end');
 
   return (
     <Box
@@ -45,7 +45,9 @@ export function PageNav({ size, children }: ClientDrawerLayoutProps & css.PageNa
       <Box grow="Yes" direction="Column">
         {children}
       </Box>
-      {!isMobile && <ResizeHandle edge="end" onPointerDown={onResizePointerDown} />}
+      {!isMobile && (
+        <ResizeHandle edge="end" onPointerDown={onResizePointerDown} onReset={resetNavWidth} />
+      )}
     </Box>
   );
 }

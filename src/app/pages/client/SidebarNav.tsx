@@ -1,6 +1,7 @@
 import React, { useRef } from 'react';
 import { usePanelWidth } from '../../hooks/usePanelWidth';
 import { ResizeHandle } from '../../components/resize-handle';
+import { SidebarTwoColumns } from './sidebarGrid.css';
 import { Scroll } from 'folds';
 
 import {
@@ -26,24 +27,26 @@ export function SidebarNav() {
 
   // Persisted, drag-resizable width for the space/server icon strip.
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [sidebarWidth, onSidebarResize] = usePanelWidth('sidebar', 66, 56, 140, 'end');
+  const [sidebarWidth, onSidebarResize, resetSidebarWidth] = usePanelWidth('sidebar', 66, 56, 140, 'end');
 
   return (
     <Sidebar style={{ width: sidebarWidth, position: 'relative' }}>
-      <ResizeHandle edge="end" onPointerDown={onSidebarResize} />
+      <ResizeHandle edge="end" onPointerDown={onSidebarResize} onReset={resetSidebarWidth} />
       <SidebarContent
         scrollable={
           <Scroll ref={scrollRef} variant="Background" size="0">
-            <SidebarStack>
-              <HomeTab />
-              <DirectTab />
-            </SidebarStack>
-            <SpaceTabs scrollRef={scrollRef} />
-            <SidebarStackSeparator />
-            <SidebarStack>
-              <ExploreTab />
-              <CreateTab />
-            </SidebarStack>
+            <div className={sidebarWidth >= 118 ? SidebarTwoColumns : undefined}>
+              <SidebarStack>
+                <HomeTab />
+                <DirectTab />
+              </SidebarStack>
+              <SpaceTabs scrollRef={scrollRef} />
+              <SidebarStackSeparator />
+              <SidebarStack>
+                <ExploreTab />
+                <CreateTab />
+              </SidebarStack>
+            </div>
           </Scroll>
         }
         sticky={

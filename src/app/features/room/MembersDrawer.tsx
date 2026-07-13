@@ -268,7 +268,7 @@ export function MembersDrawer({ room, members }: MembersDrawerProps) {
   };
 
   // Persisted, drag-resizable width (drag the drawer's left edge).
-  const [drawerWidth, onResizePointerDown] = usePanelWidth('members-drawer', 266, 200, 480, 'start');
+  const [drawerWidth, onResizePointerDown, resetDrawerWidth] = usePanelWidth('members-drawer', 266, 200, 480, 'start');
 
   return (
     <Box
@@ -277,7 +277,7 @@ export function MembersDrawer({ room, members }: MembersDrawerProps) {
       direction="Column"
       style={{ width: drawerWidth, position: 'relative' }}
     >
-      <ResizeHandle edge="start" onPointerDown={onResizePointerDown} />
+      <ResizeHandle edge="start" onPointerDown={onResizePointerDown} onReset={resetDrawerWidth} />
       <MemberDrawerHeader room={room} />
       <Box className={css.MemberDrawerContentBase} grow="Yes">
         <Scroll ref={scrollRef} variant="Background" size="300" visibility="Hover" hideTrack>

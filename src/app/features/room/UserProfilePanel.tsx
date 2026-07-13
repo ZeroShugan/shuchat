@@ -579,7 +579,7 @@ export function UserProfilePanel({ userId, roomId, inColumn, onClose }: UserProf
 
   // Persisted, drag-resizable width (drag the panel's left edge).
   // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [panelWidth, onPanelResize] = usePanelWidth('profile-panel', 320, 240, 520, 'start');
+  const [panelWidth, onPanelResize, resetPanelWidth] = usePanelWidth('profile-panel', 320, 240, 520, 'start');
 
   return (
     <Box
@@ -591,7 +591,9 @@ export function UserProfilePanel({ userId, roomId, inColumn, onClose }: UserProf
         overflowY: inColumn ? 'visible' : 'auto',
       }}
     >
-      {!inColumn && <ResizeHandle edge="start" onPointerDown={onPanelResize} />}
+      {!inColumn && (
+        <ResizeHandle edge="start" onPointerDown={onPanelResize} onReset={resetPanelWidth} />
+      )}
       {isOwnProfile && (
         <>
           <input ref={avatarFileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarFile} />
