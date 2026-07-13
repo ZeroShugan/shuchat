@@ -272,30 +272,38 @@ function createWindow() {
     win.setTitle(`${title} — v${app.getVersion()}`);
   });
 
-  // Re-send updater state after (re)loads so the web UI never misses it.
+  // Getting fresh web code WITHOUT risking the E2EE crypto store:
+  //  - clearCache() drops only the HTTP disk cache (safe).
+  //  - We UNREGISTER the service worker (removes SW control so the page fetches
+  //    the current bundle from the network) and reload once. Unregistering a SW
+  //    does NOT delete IndexedDB/Cache storage, so the Matrix crypto keys are
+  //    untouched. NEVER call clearStorageData — that corrupted the keys before.
+  let bundleRefreshed = false;
   win.webContents.on('did-finish-load', () => {
     win.webContents.send('shuchat-update-state', lastUpdateState);
+    if (bundleRefreshed) return;
+    win.webContents
+      .executeJavaScript(
+        `(async () => {
+           if (!navigator.serviceWorker) return false;
+           const regs = await navigator.serviceWorker.getRegistrations();
+           if (!regs.length) return false;
+           await Promise.all(regs.map((r) => r.unregister()));
+           return true;
+         })().catch(() => false)`
+      )
+      .then((hadServiceWorker) => {
+        if (hadServiceWorker) {
+          bundleRefreshed = true;
+          win.webContents.reloadIgnoringCache();
+        }
+      })
+      .catch(() => {});
   });
 
-  // IMPORTANT: only clear the HTTP cache — NEVER clearStorageData. The Matrix
-  // E2EE crypto store lives in IndexedDB/Cache-API for this origin, and wiping
-  // service-worker/cache storage on launch corrupted the device's local keys
-  // (device showed "unverified", couldn't decrypt). clearCache() only drops the
-  // HTTP disk cache and cannot touch crypto/storage. Stale bundles are handled
-  // by the service worker's own update flow + a one-time SW refresh below.
   const ses = win.webContents.session;
   ses.clearCache().finally(() => {
     win.loadURL(cfg.serverUrl);
-  });
-
-  // Nudge the service worker to pick up a newly deployed bundle WITHOUT touching
-  // any storage: ask it to update and skip waiting. Safe, crypto-preserving.
-  win.webContents.on('did-finish-load', () => {
-    win.webContents
-      .executeJavaScript(
-        `navigator.serviceWorker?.getRegistrations?.().then(rs => rs.forEach(r => r.update())).catch(()=>{});`
-      )
-      .catch(() => {});
   });
 }
 
