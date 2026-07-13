@@ -292,16 +292,25 @@ function createWindow() {
     win.webContents.send('shuchat-update-state', lastUpdateState);
   });
 
-  // The web app registers a service worker (VitePWA) that caches the JS bundle.
-  // In a thin shell that always wants the freshly deployed site, that stale
-  // cache made the app lag behind the browser (e.g. old encryption-shield
-  // colours lingering). Clear the SW + cache storage + HTTP cache each launch.
+  // IMPORTANT: only clear the HTTP cache — NEVER clearStorageData. The Matrix
+  // E2EE crypto store lives in IndexedDB/Cache-API for this origin, and wiping
+  // service-worker/cache storage on launch corrupted the device's local keys
+  // (device showed "unverified", couldn't decrypt). clearCache() only drops the
+  // HTTP disk cache and cannot touch crypto/storage. Stale bundles are handled
+  // by the service worker's own update flow + a one-time SW refresh below.
   const ses = win.webContents.session;
-  Promise.allSettled([
-    ses.clearCache(),
-    ses.clearStorageData({ storages: ['serviceworkers', 'cachestorage'] }),
-  ]).finally(() => {
+  ses.clearCache().finally(() => {
     win.loadURL(cfg.serverUrl);
+  });
+
+  // Nudge the service worker to pick up a newly deployed bundle WITHOUT touching
+  // any storage: ask it to update and skip waiting. Safe, crypto-preserving.
+  win.webContents.on('did-finish-load', () => {
+    win.webContents
+      .executeJavaScript(
+        `navigator.serviceWorker?.getRegistrations?.().then(rs => rs.forEach(r => r.update())).catch(()=>{});`
+      )
+      .catch(() => {});
   });
 }
 
