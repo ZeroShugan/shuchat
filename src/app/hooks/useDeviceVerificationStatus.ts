@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
+import { CryptoEvent } from 'matrix-js-sdk/lib/crypto-api';
 import { verifiedDevice } from '../utils/matrix-crypto';
 import { useAlive } from './useAlive';
 import { fulfilledPromiseSettledResult } from '../utils/common';
@@ -48,6 +49,22 @@ export const useDeviceVerificationDetect = (
       [userId, updateStatus]
     )
   );
+
+  // DevicesUpdated does NOT fire after self-verifying via the recovery key, so
+  // the "unverified" banner would linger until a manual refresh. Cross-signing
+  // completion emits KeysChanged + UserTrustStatusChanged — re-check on those.
+  useEffect(() => {
+    const onKeysChanged = () => updateStatus();
+    const onTrustChanged = (changedUserId: string) => {
+      if (changedUserId === userId) updateStatus();
+    };
+    mx.on(CryptoEvent.KeysChanged, onKeysChanged);
+    mx.on(CryptoEvent.UserTrustStatusChanged, onTrustChanged);
+    return () => {
+      mx.removeListener(CryptoEvent.KeysChanged, onKeysChanged);
+      mx.removeListener(CryptoEvent.UserTrustStatusChanged, onTrustChanged);
+    };
+  }, [mx, userId, updateStatus]);
 };
 
 export const useDeviceVerificationStatus = (
