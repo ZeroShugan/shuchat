@@ -50,25 +50,10 @@ function setupAutoUpdater() {
   autoUpdater.on('update-downloaded', (info) => {
     updateDownloaded = true;
     updateInteractive = false;
+    // No popup dialog: the bottom-left update pill and Settings → Updates
+    // ("Restart & Install") already surface this. It also installs on quit
+    // (autoInstallOnAppQuit). A dialog here was redundant and intrusive.
     sendUpdateState('ready', info?.version);
-    if (!win) return;
-    dialog
-      .showMessageBox(win, {
-        type: 'info',
-        title: 'ShuChat update',
-        message: `ShuChat v${info.version} has been downloaded.`,
-        detail: 'Restart now to apply the update, or it will install when you quit.',
-        buttons: ['Restart & Update', 'Later'],
-        defaultId: 0,
-        cancelId: 1,
-      })
-      .then((r) => {
-        if (r.response === 0) {
-          quitting = true;
-          // isSilent=true → no NSIS wizard, installs in the background & relaunches
-          autoUpdater.quitAndInstall(true, true);
-        }
-      });
   });
 
   autoUpdater.on('error', (err) => {
