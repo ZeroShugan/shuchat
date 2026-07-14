@@ -178,6 +178,28 @@ function createWindow() {
     callback(fromApp && allowed.includes(permission));
   });
 
+  // Screen sharing: Electron does NOT serve getDisplayMedia() unless we handle
+  // the request — that's why the screenshare button did nothing. Use the OS's
+  // native picker where available (Windows/macOS), else fall back to the first
+  // screen via desktopCapturer.
+  session.defaultSession.setDisplayMediaRequestHandler(
+    (request, callback) => {
+      const { desktopCapturer } = require('electron');
+      desktopCapturer
+        .getSources({ types: ['screen', 'window'] })
+        .then((sources) => {
+          // Prefer a whole screen; fall back to the first available source.
+          const screen = sources.find((s) => s.id.startsWith('screen:')) || sources[0];
+          if (screen) callback({ video: screen, audio: 'loopback' });
+          else callback({});
+        })
+        .catch(() => callback({}));
+    },
+    // useSystemPicker: native OS screen picker on Win/mac (Electron falls back
+    // to our handler above if unsupported).
+    { useSystemPicker: true }
+  );
+
   // External links open in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (!url.startsWith(serverOrigin)) {
