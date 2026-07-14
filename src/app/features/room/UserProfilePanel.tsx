@@ -14,6 +14,7 @@ import { UserHero, UserHeroName } from '../../components/user-profile/UserHero';
 import { useExtendedProfile, setOwnExtendedProfile } from '../../hooks/useExtendedProfile';
 import { useUserNotes } from '../../hooks/useUserNotes';
 import { MutualRoomsChip, ServerChip } from '../../components/user-profile/UserChips';
+import { MutualInfo } from '../../components/user-profile/MutualInfo';
 import { useUserVerificationStatus } from '../../hooks/useUserVerificationStatus';
 import { useUserDevices, setDeviceBlocked, setDeviceLocallyTrusted } from '../../hooks/useUserDevices';
 import { CryptoApi } from 'matrix-js-sdk/lib/crypto-api';
@@ -721,6 +722,7 @@ export function UserProfilePanel({ userId, roomId, inColumn, onClose }: UserProf
             </Box>
             <Line variant="Surface" size="300" />
             <PrivateNotes userId={userId} />
+            <MutualInfo userId={userId} />
             {crypto && (
               <>
                 <Line variant="Surface" size="300" />
