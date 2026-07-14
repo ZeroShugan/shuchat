@@ -29,21 +29,31 @@ function CallUtils({ embed }: { embed: CallEmbed }) {
       // SDK leaveRoomSession() is a no-op for us. Instead, blank our own
       // call.member state event(s) directly — the same thing "End" does — so
       // leaving removes us from the voice room at once.
-      try {
-        const mx = embed.room.client;
-        const myId = mx.getUserId();
-        const CALL_MEMBER = 'org.matrix.msc3401.call.member';
-        const events = embed.room.currentState.getStateEvents(CALL_MEMBER);
-        events.forEach((ev) => {
-          if (ev.getSender() !== myId) return; // only ever blank OUR own membership
-          if (Object.keys(ev.getContent()).length === 0) return; // already empty
-          mx.sendStateEvent(embed.room.roomId, CALL_MEMBER as any, {}, ev.getStateKey() ?? '').catch(
-            () => {}
-          );
-        });
-      } catch (e) {
-        // best-effort
-      }
+      const mx = embed.room.client;
+      const room = embed.room;
+      const blankMyMemberships = () => {
+        try {
+          const myId = mx.getUserId();
+          const CALL_MEMBER = 'org.matrix.msc3401.call.member';
+          const events = room.currentState.getStateEvents(CALL_MEMBER);
+          events.forEach((ev) => {
+            if (ev.getSender() !== myId) return; // only ever blank OUR own membership
+            if (Object.keys(ev.getContent()).length === 0) return; // already empty
+            mx.sendStateEvent(room.roomId, CALL_MEMBER as any, {}, ev.getStateKey() ?? '').catch(
+              () => {}
+            );
+          });
+        } catch (e) {
+          // best-effort
+        }
+      };
+      // Blank now, and again shortly after: Element Call's membership manager can
+      // have an in-flight keep-alive that lands AFTER our first blank and revives
+      // the membership (then it lingers until the ~30s expiry). The delayed
+      // second pass catches that race.
+      blankMyMemberships();
+      setTimeout(blankMyMemberships, 1500);
+      setTimeout(blankMyMemberships, 4000);
       setCallEmbed(undefined);
     }, [setCallEmbed, embed])
   );

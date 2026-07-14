@@ -76,25 +76,28 @@
   }
   setInterval(applyOutput, 2000);
 
-  /* ---- privacy: never acquire the camera unless video was explicitly enabled ---
-     Element Call can request the camera on join (light turns on / video gets
-     published) even though ShuChat joins muted. We strip the `video` constraint
-     from getUserMedia whenever the user's call video preference is OFF, so the
-     webcam is only ever touched after the user turns video on in ShuChat's call
-     controls (which flips the preference to true). */
-  function videoPreferenceOn() {
-    try {
-      for (var i = 0; i < localStorage.length; i += 1) {
-        var k = localStorage.key(i);
-        if (k && k.indexOf('callPreferences') === 0) {
-          var v = JSON.parse(localStorage.getItem(k) || '{}');
-          return v && v.video === true;
-        }
-      }
-    } catch (e) {
-      /* ignore */
-    }
-    return false; // privacy-first default: no camera
+  /* ---- privacy: block the camera ONLY during the initial auto-join probe -----
+     Element Call turns the camera on when it first loads (the webcam light comes
+     on / video gets published) even though ShuChat joins muted. But we must NOT
+     block the camera forever, or the user could never enable video. So: strip
+     the `video` constraint from getUserMedia for a short window right after the
+     shim loads (the join probe), then allow it — a later getUserMedia({video})
+     is a deliberate click on the camera button. */
+  var SHIM_LOADED_AT = Date.now();
+  var JOIN_CAMERA_BLOCK_MS = 8000; // block auto-camera for the first 8s after load
+  var userEnabledVideo = false; // once the user clicks the camera button, always allow
+
+  // Any real user interaction after the join window = intent; a video request
+  // after that is the user enabling their camera, so stop blocking.
+  function markInteraction() {
+    if (Date.now() - SHIM_LOADED_AT > 1500) userEnabledVideo = true;
+  }
+  document.addEventListener('click', markInteraction, true);
+  document.addEventListener('keydown', markInteraction, true);
+
+  function shouldBlockCamera() {
+    if (userEnabledVideo) return false;
+    return Date.now() - SHIM_LOADED_AT < JOIN_CAMERA_BLOCK_MS;
   }
 
   /* ---- input: device + constraints + optional gain/gate processing ---- */
@@ -186,8 +189,8 @@
   navigator.mediaDevices.getUserMedia = function (constraints) {
     var wantAudio = false;
     try {
-      // Strip the camera unless video was explicitly enabled (privacy).
-      if (constraints && constraints.video && !videoPreferenceOn()) {
+      // Strip the camera during the initial auto-join probe only (privacy).
+      if (constraints && constraints.video && shouldBlockCamera()) {
         constraints = Object.assign({}, constraints, { video: false });
       }
       if (constraints && constraints.audio) {

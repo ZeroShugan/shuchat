@@ -69,7 +69,12 @@ export const useCallStart = (dm = false) => {
       if (!container) {
         throw new Error('Failed to start call, No embed container element found!');
       }
-      const callEmbed = createCallEmbed(mx, room, dm, theme.kind, container, pref);
+      // Privacy rule: joining a call NEVER starts with the camera on, even if a
+      // previous call left the persisted preference at video:true. The camera is
+      // an explicit in-call action (the video toggle), which flips the pref and
+      // lets the media-shim allow acquisition.
+      const joinPref = pref ? { ...pref, video: false } : pref;
+      const callEmbed = createCallEmbed(mx, room, dm, theme.kind, container, joinPref);
 
       setCallEmbed(callEmbed);
 
