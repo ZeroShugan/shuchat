@@ -1,0 +1,99 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: system-ui, Segoe UI, sans-serif; background: #1e1f22; color: #e6e8ee; }
+  header { padding: 14px 18px 6px; }
+  h1 { font-size: 1.05rem; margin: 0; }
+  .sub { color: #9aa0ad; font-size: .78rem; margin-top: 2px; }
+  .tabs { display: flex; gap: 6px; padding: 8px 18px 0; }
+  .tab { background: #2b2d31; border: 1px solid #3a3d44; color: #cdd0d6; border-radius: 8px 8px 0 0;
+         padding: 6px 14px; cursor: pointer; font-size: .82rem; }
+  .tab.active { background: #3a3d44; color: #fff; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px;
+          padding: 14px 18px; overflow-y: auto; height: calc(100vh - 170px); }
+  .src { background: #2b2d31; border: 2px solid transparent; border-radius: 10px; overflow: hidden;
+         cursor: pointer; transition: border-color .1s; }
+  .src.sel { border-color: #5865f2; }
+  .src:hover { border-color: #4b4e57; }
+  .src.sel:hover { border-color: #5865f2; }
+  .thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #17181b; display: block; }
+  .label { display: flex; align-items: center; gap: 6px; padding: 7px 9px; font-size: .76rem; }
+  .label img { width: 16px; height: 16px; border-radius: 3px; }
+  .label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  footer { position: fixed; bottom: 0; left: 0; right: 0; background: #202225; border-top: 1px solid #34363c;
+           display: flex; align-items: center; gap: 16px; padding: 12px 18px; }
+  .aud { display: flex; align-items: center; gap: 7px; font-size: .82rem; color: #cdd0d6; cursor: pointer; }
+  .spacer { flex: 1; }
+  button.act { border: 0; border-radius: 8px; padding: 8px 18px; font-size: .85rem; font-weight: 600;
+               cursor: pointer; color: #fff; }
+  .cancel { background: #3a3d44; }
+  .share { background: #5865f2; }
+  button.act:disabled { opacity: .4; cursor: not-allowed; }
+  .empty { color: #9aa0ad; padding: 40px; text-align: center; grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>Choose what to share</h1>
+    <div class="sub">Pick a screen or a window, then choose whether to include its audio.</div>
+  </header>
+  <div class="tabs">
+    <div class="tab active" data-kind="screen">Screens</div>
+    <div class="tab" data-kind="window">Windows</div>
+  </div>
+  <div class="grid" id="grid"><div class="empty">Loading…</div></div>
+  <footer>
+    <label class="aud"><input type="checkbox" id="audio" /> Share audio</label>
+    <div class="spacer"></div>
+    <button class="act cancel" id="cancel">Cancel</button>
+    <button class="act share" id="share" disabled>Share</button>
+  </footer>
+<script>
+  let sources = [];
+  let kind = 'screen';
+  let selected = null;
+
+  function render() {
+    const grid = document.getElementById('grid');
+    const list = sources.filter((s) => (kind === 'screen' ? s.isScreen : !s.isScreen));
+    if (list.length === 0) {
+      grid.innerHTML = '<div class="empty">Nothing to show here.</div>';
+      return;
+    }
+    grid.innerHTML = '';
+    list.forEach((s) => {
+      const card = document.createElement('div');
+      card.className = 'src' + (selected === s.id ? ' sel' : '');
+      card.onclick = () => { selected = s.id; render(); document.getElementById('share').disabled = false; };
+      const img = document.createElement('img');
+      img.className = 'thumb'; img.src = s.thumbnail;
+      const label = document.createElement('div');
+      label.className = 'label';
+      if (s.appIcon) { const ic = document.createElement('img'); ic.src = s.appIcon; label.appendChild(ic); }
+      const nm = document.createElement('span'); nm.textContent = s.name; label.appendChild(nm);
+      card.appendChild(img); card.appendChild(label);
+      grid.appendChild(card);
+    });
+  }
+
+  document.querySelectorAll('.tab').forEach((t) => {
+    t.onclick = () => {
+      document.querySelectorAll('.tab').forEach((x) => x.classList.remove('active'));
+      t.classList.add('active');
+      kind = t.dataset.kind;
+      render();
+    };
+  });
+
+  document.getElementById('cancel').onclick = () => window.sharePicker.choose(null, false);
+  document.getElementById('share').onclick = () =>
+    window.sharePicker.choose(selected, document.getElementById('audio').checked);
+
+  window.sharePicker.getSources().then((s) => { sources = s || []; render(); });
+</script>
+</body>
+</html>

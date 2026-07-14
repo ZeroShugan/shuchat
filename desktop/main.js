@@ -121,6 +121,76 @@ let win = null;
 let tray = null;
 let quitting = false;
 
+// ---- screen-share source picker ----
+let sharePickerResolve = null; // pending picker's resolve()
+ipcMain.handle('sharepicker:get-sources', async () => {
+  const { desktopCapturer } = require('electron');
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: 320, height: 180 },
+    fetchWindowIcons: true,
+  });
+  return sources.map((s) => ({
+    id: s.id,
+    name: s.name,
+    isScreen: s.id.startsWith('screen:'),
+    thumbnail: s.thumbnail.toDataURL(),
+    appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
+  }));
+});
+ipcMain.on('sharepicker:choose', (_e, { id, audio }) => {
+  if (sharePickerResolve) {
+    const r = sharePickerResolve;
+    sharePickerResolve = null;
+    r({ id, audio: !!audio });
+  }
+});
+
+function pickScreenShareSource(parent) {
+  return new Promise((resolve) => {
+    const picker = new BrowserWindow({
+      parent,
+      modal: true,
+      width: 780,
+      height: 580,
+      resizable: true,
+      minimizable: false,
+      maximizable: false,
+      autoHideMenuBar: true,
+      backgroundColor: '#1e1f22',
+      title: 'Choose what to share',
+      webPreferences: {
+        preload: path.join(__dirname, 'picker-preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    picker.setMenu(null);
+    picker.loadFile(path.join(__dirname, 'screenshare-picker.html'));
+
+    sharePickerResolve = (choice) => {
+      if (!picker.isDestroyed()) picker.close();
+      if (!choice || !choice.id) {
+        resolve(null);
+        return;
+      }
+      // Re-fetch the live source object for the chosen id.
+      const { desktopCapturer } = require('electron');
+      desktopCapturer
+        .getSources({ types: ['screen', 'window'] })
+        .then((sources) => resolve({ source: sources.find((s) => s.id === choice.id), audio: choice.audio }))
+        .catch(() => resolve(null));
+    };
+
+    picker.on('closed', () => {
+      if (sharePickerResolve) {
+        sharePickerResolve = null;
+        resolve(null);
+      }
+    });
+  });
+}
+
 // Carry out a close-window choice. `e` is the close event when called from the
 // close handler (so we can preventDefault for tray/cancel).
 function applyCloseAction(action, e) {
@@ -178,27 +248,21 @@ function createWindow() {
     callback(fromApp && allowed.includes(permission));
   });
 
-  // Screen sharing: Electron does NOT serve getDisplayMedia() unless we handle
-  // the request — that's why the screenshare button did nothing. Use the OS's
-  // native picker where available (Windows/macOS), else fall back to the first
-  // screen via desktopCapturer.
-  session.defaultSession.setDisplayMediaRequestHandler(
-    (request, callback) => {
-      const { desktopCapturer } = require('electron');
-      desktopCapturer
-        .getSources({ types: ['screen', 'window'] })
-        .then((sources) => {
-          // Prefer a whole screen; fall back to the first available source.
-          const screen = sources.find((s) => s.id.startsWith('screen:')) || sources[0];
-          if (screen) callback({ video: screen, audio: 'loopback' });
-          else callback({});
-        })
-        .catch(() => callback({}));
-    },
-    // useSystemPicker: native OS screen picker on Win/mac (Electron falls back
-    // to our handler above if unsupported).
-    { useSystemPicker: true }
-  );
+  // Screen sharing: Electron doesn't serve getDisplayMedia() without a handler.
+  // Show our own picker window so the user chooses a screen OR a specific
+  // window, and whether to include audio (Electron's native picker gives no
+  // audio choice, hence the custom one).
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    pickScreenShareSource(win)
+      .then((choice) => {
+        if (!choice || !choice.source) {
+          callback({}); // cancelled → deny gracefully
+          return;
+        }
+        callback({ video: choice.source, audio: choice.audio ? 'loopback' : undefined });
+      })
+      .catch(() => callback({}));
+  });
 
   // External links open in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
