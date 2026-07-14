@@ -99,7 +99,7 @@ export function Room() {
 
         {/* Chat rooms (including DMs) */}
         {!callView && (
-          <Box grow="Yes" direction="Column">
+          <Box grow="Yes" direction="Column" style={{ minWidth: 0 }}>
             <RoomViewHeader onSearch={handleRoomSearch} searchPanelOpen={searchPanelTerm !== null} />
 
             {/* DM call area: top half when a call is active */}

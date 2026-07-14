@@ -587,7 +587,7 @@ export function UserProfilePanel({ userId, roomId, inColumn, onClose }: UserProf
       style={{
         ...(inColumn
           ? { width: '100%' }
-          : { width: panelWidth, minWidth: 240, borderLeft: `1px solid ${color.Surface.ContainerLine}`, height: '100%', position: 'relative' }),
+          : { width: panelWidth, minWidth: 240, flexShrink: 0, borderLeft: `1px solid ${color.Surface.ContainerLine}`, height: '100%', position: 'relative' }),
         overflowY: inColumn ? 'visible' : 'auto',
       }}
     >
