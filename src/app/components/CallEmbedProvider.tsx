@@ -23,17 +23,28 @@ function CallUtils({ embed }: { embed: CallEmbed }) {
   useCallHangupEvent(
     embed,
     useCallback(() => {
-      // Element Call signals hangup, then asynchronously removes our call.member
-      // state (leaves the MatrixRTC session). Disposing the iframe immediately
-      // could cut that request off, leaving us shown as still in the voice room
-      // until the delayed-event/next sync cleans it up. Also force a session
-      // leave from the SDK side as a safety net, then dispose after a short grace.
+      // Element Call's "Leave" only lets our call.member state EXPIRE (~30s),
+      // so we keep showing as present. "End" blanks it immediately. Element Call
+      // manages that state from inside its iframe (a separate session), so the
+      // SDK leaveRoomSession() is a no-op for us. Instead, blank our own
+      // call.member state event(s) directly — the same thing "End" does — so
+      // leaving removes us from the voice room at once.
       try {
-        embed.room.client.matrixRTC.getRoomSession(embed.room).leaveRoomSession();
+        const mx = embed.room.client;
+        const myId = mx.getUserId();
+        const CALL_MEMBER = 'org.matrix.msc3401.call.member';
+        const events = embed.room.currentState.getStateEvents(CALL_MEMBER);
+        events.forEach((ev) => {
+          if (ev.getSender() !== myId) return; // only ever blank OUR own membership
+          if (Object.keys(ev.getContent()).length === 0) return; // already empty
+          mx.sendStateEvent(embed.room.roomId, CALL_MEMBER as any, {}, ev.getStateKey() ?? '').catch(
+            () => {}
+          );
+        });
       } catch (e) {
-        // best-effort — Element Call still owns the primary leave
+        // best-effort
       }
-      setTimeout(() => setCallEmbed(undefined), 600);
+      setCallEmbed(undefined);
     }, [setCallEmbed, embed])
   );
 
