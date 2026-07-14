@@ -1,9 +1,8 @@
 import { Box, Chip, Icon, IconButton, Icons, Spinner, Text, Tooltip, TooltipProvider } from 'folds';
-import React, { useCallback } from 'react';
+import React, { useState } from 'react';
 import { useSetAtom } from 'jotai';
 import { StatusDivider } from './components';
-import { CallEmbed, useCallControlState } from '../../plugins/call';
-import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
+import { CallEmbed, useCallControlState, hardLeaveCall } from '../../plugins/call';
 import { callEmbedAtom } from '../../state/callEmbed';
 
 type MicrophoneButtonProps = {
@@ -157,19 +156,15 @@ export function CallControl({
 }) {
   const { microphone, video, sound, screenshare } = useCallControlState(callEmbed.control);
   const setCallEmbed = useSetAtom(callEmbedAtom);
-
-  const [hangupState, hangup] = useAsyncCallback(
-    useCallback(() => callEmbed.hangup(), [callEmbed])
-  );
-  const exiting =
-    hangupState.status === AsyncStatus.Loading || hangupState.status === AsyncStatus.Success;
+  const [exiting, setExiting] = useState(false);
 
   const handleHangup = () => {
-    if (!callJoined) {
-      setCallEmbed(undefined);
-      return;
-    }
-    hangup();
+    // Always leave the same way "End" does — tell Element Call to hang up AND
+    // blank our own membership directly. Previously, when the widget hadn't
+    // reported "joined" yet (e.g. joining from Home), this only disposed the
+    // embed, leaving our call.member state to expire ~30s later.
+    setExiting(true);
+    hardLeaveCall(callEmbed, () => setCallEmbed(undefined));
   };
 
   return (

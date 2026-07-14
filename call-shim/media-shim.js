@@ -76,28 +76,19 @@
   }
   setInterval(applyOutput, 2000);
 
-  /* ---- privacy: block the camera ONLY during the initial auto-join probe -----
-     Element Call turns the camera on when it first loads (the webcam light comes
-     on / video gets published) even though ShuChat joins muted. But we must NOT
-     block the camera forever, or the user could never enable video. So: strip
-     the `video` constraint from getUserMedia for a short window right after the
-     shim loads (the join probe), then allow it — a later getUserMedia({video})
-     is a deliberate click on the camera button. */
-  var SHIM_LOADED_AT = Date.now();
-  var JOIN_CAMERA_BLOCK_MS = 8000; // block auto-camera for the first 8s after load
-  var userEnabledVideo = false; // once the user clicks the camera button, always allow
-
-  // Any real user interaction after the join window = intent; a video request
-  // after that is the user enabling their camera, so stop blocking.
-  function markInteraction() {
-    if (Date.now() - SHIM_LOADED_AT > 1500) userEnabledVideo = true;
-  }
-  document.addEventListener('click', markInteraction, true);
-  document.addEventListener('keydown', markInteraction, true);
-
+  /* ---- privacy: the camera is allowed ONLY when the user explicitly enabled it
+     Element Call restores its last camera state on join and will turn the webcam
+     on by itself even though ShuChat joins muted. ShuChat's call control writes a
+     shared localStorage flag ('shuchat-cam-allow') — '1' only after the user
+     presses the video button, '0'/missing otherwise. We strip the `video`
+     constraint from getUserMedia unless that flag says the user asked for it, so
+     the camera can never self-activate but the video button still works. */
   function shouldBlockCamera() {
-    if (userEnabledVideo) return false;
-    return Date.now() - SHIM_LOADED_AT < JOIN_CAMERA_BLOCK_MS;
+    try {
+      return localStorage.getItem('shuchat-cam-allow') !== '1';
+    } catch (e) {
+      return true; // fail safe: block
+    }
   }
 
   /* ---- input: device + constraints + optional gain/gate processing ---- */

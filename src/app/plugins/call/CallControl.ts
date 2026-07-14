@@ -8,6 +8,29 @@ export enum CallControlEvent {
   StateUpdate = 'state_update',
 }
 
+// Privacy: the camera may only be acquired when the user explicitly turned it
+// on via the video button. This flag is stored in localStorage, which the
+// media-shim inside the Element Call iframe (same origin) reads to decide
+// whether to strip the `video` constraint from getUserMedia. Missing/'0' = the
+// camera stays blocked; only an explicit '1' allows it.
+const CAM_ALLOW_KEY = 'shuchat-cam-allow';
+
+function setCameraAllowed(allowed: boolean): void {
+  try {
+    localStorage.setItem(CAM_ALLOW_KEY, allowed ? '1' : '0');
+  } catch {
+    /* ignore */
+  }
+}
+
+function cameraAllowed(): boolean {
+  try {
+    return localStorage.getItem(CAM_ALLOW_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export class CallControl extends EventEmitter implements CallControlState {
   private state: CallControlState;
 
@@ -65,6 +88,10 @@ export class CallControl extends EventEmitter implements CallControlState {
     this.state = state;
     this.call = call;
     this.iframe = iframe;
+
+    // Block the camera from the very start of the session (before EC can call
+    // getUserMedia on join). Only the video button re-enables it.
+    setCameraAllowed(state.video);
 
     this.controlMutationObserver = new MutationObserver(this.onControlMutation.bind(this));
   }
@@ -162,9 +189,25 @@ export class CallControl extends EventEmitter implements CallControlState {
     const { data } = evt.detail;
     if (!data) return;
 
+    let videoEnabled = data.video_enabled ?? this.video;
+
+    // Privacy guard: Element Call restores its last camera state on join and can
+    // report the camera as ON without the user asking. If the user hasn't
+    // explicitly enabled video (via the button, which sets the cam-allow flag),
+    // force it back off and keep our UI showing the camera as off.
+    if (videoEnabled && !cameraAllowed()) {
+      videoEnabled = false;
+      this.setMediaState({
+        audio_enabled: data.audio_enabled ?? this.microphone,
+        video_enabled: false,
+      }).catch(() => {
+        // Element Call may not reply to device_mute — ignore timeout
+      });
+    }
+
     const state = new CallControlState(
       data.audio_enabled ?? this.microphone,
-      data.video_enabled ?? this.video,
+      videoEnabled,
       this.sound,
       this.screenshare,
       this.spotlight
@@ -212,9 +255,13 @@ export class CallControl extends EventEmitter implements CallControlState {
   }
 
   public toggleVideo() {
+    const target = !this.video;
+    // Explicit user intent: allow the media-shim to acquire the camera only when
+    // the user is turning it ON; re-block it when turning OFF.
+    setCameraAllowed(target);
     const payload: ElementMediaStatePayload = {
       audio_enabled: this.microphone,
-      video_enabled: !this.video,
+      video_enabled: target,
     };
     return this.setMediaState(payload);
   }
