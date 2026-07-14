@@ -76,6 +76,27 @@
   }
   setInterval(applyOutput, 2000);
 
+  /* ---- privacy: never acquire the camera unless video was explicitly enabled ---
+     Element Call can request the camera on join (light turns on / video gets
+     published) even though ShuChat joins muted. We strip the `video` constraint
+     from getUserMedia whenever the user's call video preference is OFF, so the
+     webcam is only ever touched after the user turns video on in ShuChat's call
+     controls (which flips the preference to true). */
+  function videoPreferenceOn() {
+    try {
+      for (var i = 0; i < localStorage.length; i += 1) {
+        var k = localStorage.key(i);
+        if (k && k.indexOf('callPreferences') === 0) {
+          var v = JSON.parse(localStorage.getItem(k) || '{}');
+          return v && v.video === true;
+        }
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    return false; // privacy-first default: no camera
+  }
+
   /* ---- input: device + constraints + optional gain/gate processing ---- */
   var realGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 
@@ -165,6 +186,10 @@
   navigator.mediaDevices.getUserMedia = function (constraints) {
     var wantAudio = false;
     try {
+      // Strip the camera unless video was explicitly enabled (privacy).
+      if (constraints && constraints.video && !videoPreferenceOn()) {
+        constraints = Object.assign({}, constraints, { video: false });
+      }
       if (constraints && constraints.audio) {
         wantAudio = true;
         S = readSettings();

@@ -23,8 +23,18 @@ function CallUtils({ embed }: { embed: CallEmbed }) {
   useCallHangupEvent(
     embed,
     useCallback(() => {
-      setCallEmbed(undefined);
-    }, [setCallEmbed])
+      // Element Call signals hangup, then asynchronously removes our call.member
+      // state (leaves the MatrixRTC session). Disposing the iframe immediately
+      // could cut that request off, leaving us shown as still in the voice room
+      // until the delayed-event/next sync cleans it up. Also force a session
+      // leave from the SDK side as a safety net, then dispose after a short grace.
+      try {
+        embed.room.client.matrixRTC.getRoomSession(embed.room).leaveRoomSession();
+      } catch (e) {
+        // best-effort — Element Call still owns the primary leave
+      }
+      setTimeout(() => setCallEmbed(undefined), 600);
+    }, [setCallEmbed, embed])
   );
 
   return null;
