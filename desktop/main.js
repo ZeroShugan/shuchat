@@ -123,6 +123,7 @@ let quitting = false;
 
 // ---- screen-share source picker ----
 let sharePickerResolve = null; // pending picker's resolve()
+let cachedShareSources = []; // real DesktopCapturerSource objects from the last list
 ipcMain.handle('sharepicker:get-sources', async () => {
   const { desktopCapturer } = require('electron');
   const sources = await desktopCapturer.getSources({
@@ -130,6 +131,7 @@ ipcMain.handle('sharepicker:get-sources', async () => {
     thumbnailSize: { width: 320, height: 180 },
     fetchWindowIcons: true,
   });
+  cachedShareSources = sources; // keep the real objects; window ids can change between calls
   return sources.map((s) => ({
     id: s.id,
     name: s.name,
@@ -142,7 +144,10 @@ ipcMain.on('sharepicker:choose', (_e, { id, audio }) => {
   if (sharePickerResolve) {
     const r = sharePickerResolve;
     sharePickerResolve = null;
-    r({ id, audio: !!audio });
+    // Resolve with the CACHED source object (matching id) — never re-query, or
+    // the ids won't line up and the share silently fails.
+    const source = id ? cachedShareSources.find((s) => s.id === id) : null;
+    r({ source: source || null, audio: !!audio });
   }
 });
 
@@ -168,18 +173,12 @@ function pickScreenShareSource(parent) {
     picker.setMenu(null);
     picker.loadFile(path.join(__dirname, 'screenshare-picker.html'));
 
+    // The IPC 'sharepicker:choose' handler already resolves the chosen id to the
+    // CACHED DesktopCapturerSource object (re-querying gives different window
+    // ids and silently breaks the share) — so just close and pass it through.
     sharePickerResolve = (choice) => {
       if (!picker.isDestroyed()) picker.close();
-      if (!choice || !choice.id) {
-        resolve(null);
-        return;
-      }
-      // Re-fetch the live source object for the chosen id.
-      const { desktopCapturer } = require('electron');
-      desktopCapturer
-        .getSources({ types: ['screen', 'window'] })
-        .then((sources) => resolve({ source: sources.find((s) => s.id === choice.id), audio: choice.audio }))
-        .catch(() => resolve(null));
+      resolve(choice && choice.source ? choice : null);
     };
 
     picker.on('closed', () => {
