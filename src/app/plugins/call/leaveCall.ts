@@ -2,6 +2,22 @@ import { CallEmbed } from './CallEmbed';
 
 const CALL_MEMBER = 'org.matrix.msc3401.call.member';
 
+/* Diagnostic trail for leave issues. Kept in a localStorage ring so the owner
+   can paste it after a manual test (console is often closed): read it with
+   localStorage.getItem('shuchat-call-log'). Also mirrored to console. */
+function logCall(msg: string): void {
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  // eslint-disable-next-line no-console
+  console.info('[shuchat-call]', line);
+  try {
+    const prev = localStorage.getItem('shuchat-call-log') ?? '';
+    const lines = `${prev}\n${line}`.split('\n').filter(Boolean);
+    localStorage.setItem('shuchat-call-log', lines.slice(-80).join('\n'));
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Blank our OWN MatrixRTC membership state event(s) for this room. This is what
  * removes our name/avatar from the voice room immediately. Element Call's own
@@ -15,15 +31,19 @@ export function blankOwnCallMemberships(callEmbed: CallEmbed): void {
     const { room } = callEmbed;
     const myId = mx.getUserId();
     const events = room.currentState.getStateEvents(CALL_MEMBER);
+    let mine = 0;
     events.forEach((ev) => {
       if (ev.getSender() !== myId) return; // never touch anyone else's membership
       if (Object.keys(ev.getContent()).length === 0) return; // already empty
-      mx.sendStateEvent(room.roomId, CALL_MEMBER as any, {}, ev.getStateKey() ?? '').catch(() => {
-        /* best-effort */
-      });
+      mine += 1;
+      const key = ev.getStateKey() ?? '';
+      mx.sendStateEvent(room.roomId, CALL_MEMBER as any, {}, key)
+        .then(() => logCall(`blanked membership key=${key} OK`))
+        .catch((e) => logCall(`blank FAILED key=${key}: ${e?.message ?? e}`));
     });
-  } catch {
-    /* best-effort */
+    logCall(`blankOwnCallMemberships: ${events.length} member events, ${mine} mine non-empty`);
+  } catch (e) {
+    logCall(`blankOwnCallMemberships threw: ${(e as Error)?.message ?? e}`);
   }
 }
 
@@ -42,10 +62,12 @@ export function blankOwnCallMemberships(callEmbed: CallEmbed): void {
  * keep-alive, and (3) tear the embed down slightly later so EC can finish first.
  */
 export function hardLeaveCall(callEmbed: CallEmbed, teardown: () => void): void {
+  logCall(`hardLeaveCall: room=${callEmbed.roomId} joined=${callEmbed.joined}`);
   // (1) Ask Element Call to hang up cleanly — exactly what "End" does.
-  callEmbed.hangup().catch(() => {
-    /* EC may not be ready to reply; the direct blank below covers us */
-  });
+  callEmbed
+    .hangup()
+    .then(() => logCall('hangup sent to Element Call OK'))
+    .catch((e) => logCall(`hangup send failed (covered by direct blank): ${e?.message ?? e}`));
 
   // (2) Blank our membership now and again shortly after. The retries catch an
   // EC keep-alive that could land after the first blank and revive us.

@@ -1,13 +1,25 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { Box, Text, config, toRem } from 'folds';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { callEmbedAtom } from '../../state/callEmbed';
+import { hardLeaveCall } from '../../plugins/call';
 
 /** Shows a thin "Voice Connected" strip above UserPanel — only visible during a call. */
 export function VoiceStatusBar() {
   const callEmbed = useAtomValue(callEmbedAtom);
   const setCallEmbed = useSetAtom(callEmbedAtom);
-  const handleLeave = useCallback(() => setCallEmbed(undefined), [setCallEmbed]);
+  const [exiting, setExiting] = useState(false);
+  const handleLeave = useCallback(() => {
+    // End the call the reliable way — hangup to Element Call + blank our own
+    // call.member state (same as the "End" button). Just disposing the embed
+    // (the old behaviour) left our membership to expire ~30s later.
+    if (!callEmbed || exiting) return;
+    setExiting(true);
+    hardLeaveCall(callEmbed, () => {
+      setCallEmbed(undefined);
+      setExiting(false);
+    });
+  }, [callEmbed, exiting, setCallEmbed]);
 
   if (!callEmbed) return null;
 
@@ -38,15 +50,17 @@ export function VoiceStatusBar() {
       </Box>
       <button
         onClick={handleLeave}
+        disabled={exiting}
         style={{
           background: 'rgba(237,66,69,0.15)',
           border: '1px solid rgba(237,66,69,0.4)',
           borderRadius: 6, padding: `${toRem(3)} ${toRem(10)}`,
-          cursor: 'pointer', color: '#ed4245',
+          cursor: exiting ? 'default' : 'pointer', color: '#ed4245',
           fontSize: 12, fontFamily: 'inherit', flexShrink: 0, fontWeight: 600,
+          opacity: exiting ? 0.6 : 1,
         }}
       >
-        Leave
+        {exiting ? 'Ending…' : 'End Call'}
       </button>
     </Box>
   );
