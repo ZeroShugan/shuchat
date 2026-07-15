@@ -178,6 +178,19 @@ ipcMain.on('sharepicker:choose', (_e, { id, audio }) => {
   }
 });
 
+// ---- stream pop-out window controls (see #shuchat-popout in the open handler) ----
+ipcMain.on('popout:set-always-on-top', (e, flag) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (w && w !== win) w.setAlwaysOnTop(!!flag);
+});
+ipcMain.on('popout:focus-main', () => {
+  if (win && !win.isDestroyed()) {
+    if (win.isMinimized()) win.restore();
+    win.show();
+    win.focus();
+  }
+});
+
 function pickScreenShareSource(parent) {
   return new Promise((resolve) => {
     const picker = new BrowserWindow({
@@ -327,6 +340,27 @@ function createWindow() {
     if (!url.startsWith(serverOrigin)) {
       shell.openExternal(url);
       return { action: 'deny' };
+    }
+    // Stream pop-out window (Discord-style): real always-on-top BrowserWindow.
+    // The page's "Stay on top" toggle + "Return to main window" use the popout
+    // IPC below (preload is inherited so window.shuchatDesktop exists there).
+    if (url.includes('#shuchat-popout')) {
+      return {
+        action: 'allow',
+        overrideBrowserWindowOptions: {
+          width: 720,
+          height: 460,
+          alwaysOnTop: true,
+          autoHideMenuBar: true,
+          backgroundColor: '#0e0e12',
+          title: 'ShuChat — Stream',
+          webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
+            contextIsolation: true,
+            nodeIntegration: false,
+          },
+        },
+      };
     }
     return { action: 'allow' };
   });
