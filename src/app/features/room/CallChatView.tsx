@@ -1,27 +1,44 @@
 import React from 'react';
 import { useSetAtom } from 'jotai';
 import { useParams } from 'react-router-dom';
-import { Box, Text, TooltipProvider, Tooltip, Icon, Icons, IconButton, toRem } from 'folds';
+import { Box, Text, TooltipProvider, Tooltip, Icon, Icons, IconButton } from 'folds';
 import { Page, PageHeader } from '../../components/page';
 import { callChatAtom } from '../../state/callEmbed';
 import { RoomView } from './RoomView';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
+import { usePanelWidth } from '../../hooks/usePanelWidth';
+import { ResizeHandle } from '../../components/resize-handle';
 
 export function CallChatView() {
   const { eventId } = useParams();
   const setChat = useSetAtom(callChatAtom);
   const screenSize = useScreenSizeContext();
 
+  // Drag-resizable like the other panels (handle on the LEFT edge — the call
+  // view is on that side); persisted, double-click resets.
+  const [width, onResizePointerDown, resetWidth] = usePanelWidth(
+    'call-chat',
+    456,
+    280,
+    900,
+    'start'
+  );
+
   const handleClose = () => setChat(false);
+  const desktop = screenSize === ScreenSize.Desktop;
 
   return (
     <Page
       style={{
-        width: screenSize === ScreenSize.Desktop ? toRem(456) : '100%',
+        width: desktop ? width : '100%',
         flexShrink: 0,
         flexGrow: 0,
+        position: 'relative',
       }}
     >
+      {desktop && (
+        <ResizeHandle edge="start" onPointerDown={onResizePointerDown} onReset={resetWidth} />
+      )}
       <PageHeader>
         <Box grow="Yes" alignItems="Center" gap="200">
           <Box grow="Yes">

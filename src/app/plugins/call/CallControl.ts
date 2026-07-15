@@ -356,6 +356,16 @@ export class CallControl extends EventEmitter implements CallControlState {
   }
 
   public toggleScreenshare() {
+    // Stopping the primary share also stops any extra multi-streams — the main
+    // stop button always ends EVERYTHING (individual stops live in the tile
+    // right-click menu).
+    if (this.screenshare) {
+      try {
+        (this.iframe.contentWindow as any)?.__shuStopExtraShares?.();
+      } catch (e) {
+        /* best-effort */
+      }
+    }
     this.screenshareButton?.click();
   }
 

@@ -10,10 +10,7 @@ import { AvatarPresence, PresenceBadge } from '../presence';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { getMxIdLocalPart } from '../../utils/matrix';
 import { nameInitials } from '../../utils/common';
-import { useCallPreferences } from '../../state/hooks/callPreferences';
-import { useSetting } from '../../state/hooks/settings';
-import { settingsAtom } from '../../state/settings';
-import { playMuteSound, playUnmuteSound, playDeafenSound, playUndeafenSound } from '../../utils/voiceFeedback';
+import { useVoiceControls } from '../../hooks/useVoiceControls';
 import { Settings } from '../../features/settings';
 import { Modal500 } from '../Modal500';
 
@@ -73,8 +70,10 @@ export function UserPanel() {
     if (e.key === 'Escape') { setEditingStatus(false); }
   };
 
-  const { microphone, sound, toggleMicrophone, toggleSound } = useCallPreferences();
-  const [notificationVolume] = useSetting(settingsAtom, 'notificationVolume');
+  // Unified voice state: live call control when in a call, preferences
+  // otherwise — keeps this panel in sync with the in-call buttons. Tones are
+  // played inside the hook.
+  const { microphone, sound, toggleMicrophone, toggleSound } = useVoiceControls();
   const [showSettings, setShowSettings] = useState(false);
   const statusText = userPresence?.status || presenceLabel[presence];
 
@@ -147,14 +146,14 @@ export function UserPanel() {
 
         <Box shrink="No" alignItems="Center" style={{ gap: toRem(4) }}>
           <CtrlBtn
-            onClick={() => { if (microphone) playMuteSound(notificationVolume); else playUnmuteSound(notificationVolume); toggleMicrophone(); }}
+            onClick={toggleMicrophone}
             muted={!microphone}
             title={microphone ? 'Mute microphone' : 'Unmute microphone'}
           >
             <Icon size="200" src={microphone ? Icons.Mic : Icons.MicMute} filled={!microphone} />
           </CtrlBtn>
           <CtrlBtn
-            onClick={() => { if (sound) playDeafenSound(notificationVolume); else playUndeafenSound(notificationVolume); toggleSound(); }}
+            onClick={toggleSound}
             muted={!sound}
             title={sound ? 'Deafen' : 'Undeafen'}
           >

@@ -1,4 +1,4 @@
-import React, { ReactNode, useCallback, useRef } from 'react';
+import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
 import { useAtomValue, useSetAtom } from 'jotai';
 import { config } from 'folds';
 import {
@@ -17,6 +17,27 @@ import { ScreenSize, useScreenSizeContext } from '../hooks/useScreenSize';
 
 function CallUtils({ embed }: { embed: CallEmbed }) {
   const setCallEmbed = useSetAtom(callEmbedAtom);
+
+  // Desktop multi-select share picker: after granting the FIRST source to the
+  // primary getDisplayMedia request, the Electron shell queues the remaining
+  // selected sources and fires this event — start one extra share per queued
+  // source (each __shuShareAnother → getDisplayMedia is answered instantly
+  // from the queue, no picker shown).
+  useEffect(() => {
+    const startExtras = async (evt: Event) => {
+      const count = (evt as CustomEvent<{ count?: number }>).detail?.count ?? 0;
+      const win = embed.iframe.contentWindow as
+        | (Window & { __shuShareAnother?: () => Promise<boolean> })
+        | null;
+      if (!win?.__shuShareAnother) return;
+      for (let i = 0; i < count; i += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await win.__shuShareAnother().catch(() => {});
+      }
+    };
+    window.addEventListener('shuchat-extra-shares', startExtras);
+    return () => window.removeEventListener('shuchat-extra-shares', startExtras);
+  }, [embed]);
 
   useCallMemberSoundSync(embed);
   useCallThemeSync(embed);

@@ -3,6 +3,7 @@ import React, { useState } from 'react';
 import { useSetAtom } from 'jotai';
 import { StatusDivider } from './components';
 import { CallEmbed, useCallControlState, hardLeaveCall } from '../../plugins/call';
+import { useVoiceControls } from '../../hooks/useVoiceControls';
 import { callEmbedAtom } from '../../state/callEmbed';
 
 type MicrophoneButtonProps = {
@@ -154,7 +155,9 @@ export function CallControl({
   compact: boolean;
   callJoined: boolean;
 }) {
-  const { microphone, video, sound, screenshare } = useCallControlState(callEmbed.control);
+  const { video, screenshare } = useCallControlState(callEmbed.control);
+  // Unified mic/deafen state — synced with the user panel + in-room bar, tones included.
+  const { microphone, sound, toggleMicrophone, toggleSound } = useVoiceControls();
   const setCallEmbed = useSetAtom(callEmbedAtom);
   const [exiting, setExiting] = useState(false);
 
@@ -172,14 +175,10 @@ export function CallControl({
       <Box alignItems="Inherit" gap="200">
         <MicrophoneButton
           enabled={microphone}
-          onToggle={() => callEmbed.control.toggleMicrophone()}
+          onToggle={async () => toggleMicrophone()}
           disabled={!callJoined}
         />
-        <SoundButton
-          enabled={sound}
-          onToggle={() => callEmbed.control.toggleSound()}
-          disabled={!callJoined}
-        />
+        <SoundButton enabled={sound} onToggle={toggleSound} disabled={!callJoined} />
         {!compact && <StatusDivider />}
         <VideoButton
           enabled={video}

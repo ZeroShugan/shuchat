@@ -26,6 +26,7 @@ import {
   VideoButton,
 } from './Controls';
 import { CallEmbed, useCallControlState } from '../../plugins/call';
+import { useVoiceControls } from '../../hooks/useVoiceControls';
 import { useResizeObserver } from '../../hooks/useResizeObserver';
 import { stopPropagation } from '../../utils/keyboard';
 import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
@@ -46,9 +47,10 @@ export function CallControls({ callEmbed }: CallControlsProps) {
     useCallback(() => controlRef.current, [])
   );
 
-  const { microphone, video, sound, screenshare, spotlight } = useCallControlState(
-    callEmbed.control
-  );
+  const { video, screenshare, spotlight } = useCallControlState(callEmbed.control);
+  // Mic/sound go through the unified hook so ALL mute/deafen buttons stay in
+  // sync and play the feedback tones.
+  const { microphone, sound, toggleMicrophone, toggleSound } = useVoiceControls();
 
   const [cords, setCords] = useState<RectCords>();
 
@@ -94,11 +96,8 @@ export function CallControls({ callEmbed }: CallControlsProps) {
       >
         <Box alignItems="Center" gap="Inherit" grow="Yes" direction={compact ? 'Column' : 'Row'}>
           <Box shrink="No" alignItems="Inherit" justifyContent="Inherit" gap="200">
-            <MicrophoneButton
-              enabled={microphone}
-              onToggle={() => callEmbed.control.toggleMicrophone()}
-            />
-            <SoundButton enabled={sound} onToggle={() => callEmbed.control.toggleSound()} />
+            <MicrophoneButton enabled={microphone} onToggle={async () => toggleMicrophone()} />
+            <SoundButton enabled={sound} onToggle={toggleSound} />
           </Box>
           {!compact && <ControlDivider />}
           <Box shrink="No" alignItems="Inherit" justifyContent="Inherit" gap="200">

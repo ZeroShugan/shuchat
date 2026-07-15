@@ -36,6 +36,12 @@ contextBridge.exposeInMainWorld('shuchatDesktop', {
   popoutFocusMain: () => ipcRenderer.send('popout:focus-main'),
 });
 
+// Multi-select screenshare: main queued extra sources — tell the web app how
+// many follow-up shares to start (each answered from the queue, no picker).
+ipcRenderer.on('shuchat-extra-shares', (_evt, count) => {
+  window.dispatchEvent(new CustomEvent('shuchat-extra-shares', { detail: { count } }));
+});
+
 // Forward global PTT transitions to the page as DOM events (the web app's
 // usePushToTalk hook listens for these when window.shuchatDesktop exists).
 ipcRenderer.on('shuchat-ptt', (_evt, down) => {

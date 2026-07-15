@@ -271,7 +271,9 @@ export class CallEmbed {
     // tracks explicitly (the OS capture indicator turns off immediately)
     // instead of relying on the iframe teardown to end them.
     try {
-      const share = (this.iframe.contentWindow as any)?.__shuScreenShare as MediaStream | null;
+      const w = this.iframe.contentWindow as any;
+      w?.__shuStopExtraShares?.(); // extra multi-streams die with the call too
+      const share = w?.__shuScreenShare as MediaStream | null;
       share?.getTracks().forEach((t) => t.stop());
     } catch (e) {
       // best-effort
