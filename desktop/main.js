@@ -21,6 +21,11 @@ let lastUpdateState = { status: 'idle', version: null };
 // Broadcast updater status to the web app (Settings → Updates + bottom-left pill).
 function sendUpdateState(status, version) {
   lastUpdateState = { status, version: version ?? null, current: app.getVersion() };
+  try {
+    logMain(`updater: ${status}${version ? ` v${version}` : ''} (current v${app.getVersion()})`);
+  } catch (e) {
+    /* app may not be ready */
+  }
   if (win && !win.isDestroyed()) win.webContents.send('shuchat-update-state', lastUpdateState);
 }
 
@@ -121,22 +126,50 @@ let win = null;
 let tray = null;
 let quitting = false;
 
-// ---- screen-share source picker ----
-let sharePickerResolve = null; // pending picker's resolve()
-let cachedShareSources = []; // real DesktopCapturerSource objects for the pending request
-
-// Diagnostic log for screen-share (packaged app has no console). Lives next to
-// the app data so it survives updates: <userData>/screenshare.log.
-function logShare(msg) {
+// ---- persistent logging -----------------------------------------------------
+// All diagnostics live in <userData>/logs/*.log so the owner can paste the
+// latest files after testing a feature:
+//   main.log        app lifecycle, updater, windows, crashes
+//   renderer.log    EVERY console line from the web app AND the call iframe
+//                   (includes the [shuchat-call] / [shim] diagnostics)
+//   screenshare.log the screen-share grant pipeline
+// Files rotate at 2 MB to <name>.log.old (one previous generation kept).
+const LOG_MAX_BYTES = 2 * 1024 * 1024;
+function logsDir() {
+  const d = path.join(app.getPath('userData'), 'logs');
   try {
-    fs.appendFileSync(
-      path.join(app.getPath('userData'), 'screenshare.log'),
-      `[${new Date().toISOString()}] ${msg}\n`
-    );
+    fs.mkdirSync(d, { recursive: true });
+  } catch (e) {
+    /* ignore */
+  }
+  return d;
+}
+function appendLog(name, msg) {
+  try {
+    const file = path.join(logsDir(), `${name}.log`);
+    try {
+      if (fs.statSync(file).size > LOG_MAX_BYTES) fs.renameSync(file, `${file}.old`);
+    } catch (e) {
+      /* no file yet */
+    }
+    fs.appendFileSync(file, `[${new Date().toISOString()}] ${msg}\n`);
   } catch (e) {
     /* ignore */
   }
 }
+const logMain = (msg) => appendLog('main', msg);
+const logShare = (msg) => appendLog('screenshare', msg);
+
+process.on('uncaughtException', (e) => {
+  logMain(`UNCAUGHT EXCEPTION: ${e && e.stack ? e.stack : e}`);
+});
+process.on('unhandledRejection', (e) => {
+  logMain(`UNHANDLED REJECTION: ${e && e.stack ? e.stack : e}`);
+});
+
+// ---- screen-share source picker ----
+let sharePickerResolve = null; // pending picker's resolve()
+let cachedShareSources = []; // real DesktopCapturerSource objects for the pending request
 
 function mapShareSources(sources) {
   return sources.map((s) => ({
@@ -272,6 +305,22 @@ function createWindow() {
   });
 
   const serverOrigin = new URL(cfg.serverUrl).origin;
+
+  // Mirror every console line from the web app (all frames, incl. the call
+  // iframe and its media-shim) into logs/renderer.log for post-test debugging.
+  const CONSOLE_LEVELS = ['debug', 'info', 'warn', 'error'];
+  win.webContents.on('console-message', (_e, level, message, line, sourceId) => {
+    const src = (sourceId || '').split('/').pop() || '';
+    appendLog('renderer', `[${CONSOLE_LEVELS[level] ?? level}] ${message} (${src}:${line})`);
+  });
+  win.webContents.on('render-process-gone', (_e, details) => {
+    logMain(`RENDERER GONE: reason=${details.reason} exitCode=${details.exitCode}`);
+  });
+  win.webContents.on('unresponsive', () => logMain('window unresponsive'));
+  win.webContents.on('responsive', () => logMain('window responsive again'));
+  win.webContents.on('did-fail-load', (_e, code, desc, url) => {
+    logMain(`did-fail-load code=${code} desc=${desc} url=${url}`);
+  });
 
   // Media/notification permissions: auto-grant for the ShuChat origin only.
   session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) => {
@@ -500,6 +549,7 @@ function createTray() {
     Menu.buildFromTemplate([
       { label: 'Open ShuChat', click: () => { if (win) { win.show(); win.focus(); } } },
       { label: 'Check for Updates…', click: () => checkForUpdatesInteractive() },
+      { label: 'Open Logs Folder', click: () => { shell.openPath(logsDir()); } },
       { type: 'separator' },
       {
         label: 'Quit',
@@ -599,6 +649,7 @@ if (!gotLock) {
   });
 
   app.whenReady().then(() => {
+    logMain(`=== ShuChat desktop v${app.getVersion()} starting (${process.platform}) ===`);
     createWindow();
     // Pre-create the tray only if the user has chosen to keep the app in tray.
     if (readConfig().closeAction === 'tray') createTray();
