@@ -63,6 +63,10 @@ export interface Settings {
   vvSensitivity: number; // manual gate threshold in dB, -100 = off
   vvPushToTalk: boolean;
   vvPttKey: string; // KeyboardEvent.code, '' = unset
+  vvMicChannels: 'mono' | 'stereo'; // mono = downmix + heard in both ears (default)
+  vvStreamResolution: '720p' | '1080p' | '1440p' | 'source'; // screenshare max resolution
+  vvStreamFps: number; // screenshare target framerate (15/30/60)
+  vvStreamMaxKbps: number; // screenshare max video bitrate in kbps
 }
 
 const defaultSettings: Settings = {
@@ -117,6 +121,10 @@ const defaultSettings: Settings = {
   vvSensitivity: -100,
   vvPushToTalk: false,
   vvPttKey: '',
+  vvMicChannels: 'mono',
+  vvStreamResolution: '1080p',
+  vvStreamFps: 30,
+  vvStreamMaxKbps: 5000,
 };
 
 export const getSettings = (): Settings => {

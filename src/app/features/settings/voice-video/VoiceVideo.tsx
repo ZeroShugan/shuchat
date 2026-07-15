@@ -39,6 +39,10 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
   const [pushToTalk, setPushToTalk] = useSetting(settingsAtom, 'vvPushToTalk');
   const [pttKey, setPttKey] = useSetting(settingsAtom, 'vvPttKey');
   const [voiceVolume, setVoiceVolume] = useSetting(settingsAtom, 'voiceVolume');
+  const [micChannels, setMicChannels] = useSetting(settingsAtom, 'vvMicChannels');
+  const [streamResolution, setStreamResolution] = useSetting(settingsAtom, 'vvStreamResolution');
+  const [streamFps, setStreamFps] = useSetting(settingsAtom, 'vvStreamFps');
+  const [streamMaxKbps, setStreamMaxKbps] = useSetting(settingsAtom, 'vvStreamMaxKbps');
 
   const callEmbed = useAtomValue(callEmbedAtom);
 
@@ -334,6 +338,20 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                       description="This browser does not support choosing an output device — call audio uses the system default."
                     />
                   )}
+                  <SettingTile
+                    title="Microphone Channels"
+                    description="Mono (recommended): your voice is heard equally in both ears, even if your mic only captures one channel. Stereo: true 2-channel input for stereo mics/interfaces. Applies when you join your next call."
+                    after={
+                      <select
+                        className={NativeSelect}
+                        value={micChannels ?? 'mono'}
+                        onChange={(e) => setMicChannels(e.target.value as 'mono' | 'stereo')}
+                      >
+                        <option value="mono">Mono (both ears)</option>
+                        <option value="stereo">Stereo (2 channels)</option>
+                      </select>
+                    }
+                  />
                 </SequenceCard>
               </Box>
 
@@ -358,6 +376,64 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                     description={`People speaking in calls — ${Math.round((voiceVolume ?? 0.5) * 100)}%. Applies live.`}
                     after={
                       <RangeSlider min={0} max={1} step={0.05} value={voiceVolume ?? 0.5} onChange={setVoiceVolume} />
+                    }
+                  />
+                </SequenceCard>
+              </Box>
+
+              {/* ---- Stream (screen share quality) ---- */}
+              <Box direction="Column" gap="100">
+                <Text size="L400">Stream</Text>
+                <SequenceCard
+                  className={SequenceCardStyle}
+                  variant="SurfaceVariant"
+                  direction="Column"
+                  gap="400"
+                >
+                  <SettingTile
+                    title="Stream Resolution"
+                    description="Maximum resolution of your screen share. Applies from your next share."
+                    after={
+                      <select
+                        className={NativeSelect}
+                        value={streamResolution ?? '1080p'}
+                        onChange={(e) =>
+                          setStreamResolution(e.target.value as '720p' | '1080p' | '1440p' | 'source')
+                        }
+                      >
+                        <option value="720p">720p</option>
+                        <option value="1080p">1080p</option>
+                        <option value="1440p">1440p</option>
+                        <option value="source">Source (no limit)</option>
+                      </select>
+                    }
+                  />
+                  <SettingTile
+                    title="Stream Framerate"
+                    description="Target frames per second for screen sharing. Higher is smoother motion. Applies live."
+                    after={
+                      <select
+                        className={NativeSelect}
+                        value={String(streamFps ?? 30)}
+                        onChange={(e) => setStreamFps(parseInt(e.target.value, 10))}
+                      >
+                        <option value="15">15 FPS</option>
+                        <option value="30">30 FPS</option>
+                        <option value="60">60 FPS</option>
+                      </select>
+                    }
+                  />
+                  <SettingTile
+                    title="Stream Maximum Bitrate"
+                    description={`Overall quality cap of your stream — ${((streamMaxKbps ?? 5000) / 1000).toFixed(1)} Mbps. Higher is better but uses more upload. Applies live.`}
+                    after={
+                      <RangeSlider
+                        min={1000}
+                        max={20000}
+                        step={500}
+                        value={streamMaxKbps ?? 5000}
+                        onChange={setStreamMaxKbps}
+                      />
                     }
                   />
                 </SequenceCard>

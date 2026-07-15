@@ -8,6 +8,7 @@ import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { stopPropagation } from '../../utils/keyboard';
 import { callPopoutAtom } from '../../state/callEmbed';
 import { popOutStream, popOutSupported } from '../floating-stream/popout';
+import { ParticipantVolumeMenu } from './ParticipantVolumeMenu';
 
 type TileTarget = {
   cords: RectCords;
@@ -34,7 +35,6 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
   const mx = useMatrixClient();
   const joined = useCallJoined(callEmbed);
   const [target, setTarget] = useState<TileTarget | undefined>();
-  const [volume, setVolume] = useState(100);
   const setPopout = useSetAtom(callPopoutAtom);
 
   useEffect(() => {
@@ -63,7 +63,6 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
 
       // iframe-relative → viewport coordinates
       const frame = callEmbed.iframe.getBoundingClientRect();
-      setVolume(Math.round((callEmbed.control.getParticipantVolume(userId) ?? 1) * 100));
       setTarget({
         cords: { x: frame.left + evt.clientX, y: frame.top + evt.clientY, width: 0, height: 0 },
         userId,
@@ -103,11 +102,6 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
     if (opened) setPopout(true);
     close();
   };
-  const handleVolume = (v: number) => {
-    setVolume(v);
-    if (target) callEmbed.control.setParticipantVolume(target.userId, v / 100);
-  };
-
   if (!target) return null;
 
   return (
@@ -143,24 +137,7 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
                 </>
               )}
               {!target.own && (
-                <Box
-                  direction="Column"
-                  gap="100"
-                  style={{ padding: `${config.space.S100} ${config.space.S200}` }}
-                >
-                  <Box justifyContent="SpaceBetween" alignItems="Center">
-                    <Text size="L400">Volume</Text>
-                    <Text size="T200">{volume}%</Text>
-                  </Box>
-                  <input
-                    type="range"
-                    min={0}
-                    max={200}
-                    value={volume}
-                    onChange={(e) => handleVolume(parseInt(e.target.value, 10))}
-                    style={{ width: '100%' }}
-                  />
-                </Box>
+                <ParticipantVolumeMenu callEmbed={callEmbed} userId={target.userId} />
               )}
               {popOutSupported() && target.video?.srcObject && (
                 <MenuItem size="300" variant="Surface" radii="300" onClick={handlePopOut}>

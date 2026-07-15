@@ -22,6 +22,10 @@
       vvAutoSensitivity: true,
       vvSensitivity: -100,
       voiceVolume: 0.5,
+      vvMicChannels: 'mono',
+      vvStreamResolution: '1080p',
+      vvStreamFps: 30,
+      vvStreamMaxKbps: 5000,
     };
     try {
       var raw = localStorage.getItem('settings');
@@ -99,11 +103,86 @@
      so ShuChat can render a floating preview / pop-out of the user's own
      stream. window.__shuScreenShare holds the live stream; a 'shu-screenshare'
      CustomEvent fires on start ({active:true}) and end ({active:false}). */
+  /* Stream quality (Commet-style): apply the user's resolution/FPS constraints
+     to the captured track, and cap the encoder bitrate/framerate on the
+     RTCRtpSender that publishes it (found via the __rtcPCs the EC bundle
+     exposes). Bitrate/FPS re-apply live on settings changes. */
+  var STREAM_RES = { '720p': 720, '1080p': 1080, '1440p': 1440 };
+
+  function applyStreamQuality(stream) {
+    S = readSettings();
+    var track = stream.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      var c = { frameRate: S.vvStreamFps };
+      var h = STREAM_RES[S.vvStreamResolution];
+      if (h) {
+        c.height = { max: h };
+        c.width = { max: Math.round((h * 16) / 9) };
+      }
+      track.applyConstraints(c).catch(function () {});
+    } catch (e) {
+      /* ignore */
+    }
+    applySenderCaps(track, 40); // retry while EC attaches the sender
+  }
+
+  function applySenderCaps(track, tries) {
+    var applied = false;
+    try {
+      var pcs = window.__rtcPCs || [];
+      for (var i = 0; i < pcs.length; i += 1) {
+        var senders = pcs[i].getSenders ? pcs[i].getSenders() : [];
+        for (var j = 0; j < senders.length; j += 1) {
+          var sender = senders[j];
+          if (sender.track === track) {
+            var params = sender.getParameters();
+            if (!params.encodings || params.encodings.length === 0) {
+              params.encodings = [{}];
+            }
+            for (var k = 0; k < params.encodings.length; k += 1) {
+              params.encodings[k].maxBitrate = S.vvStreamMaxKbps * 1000;
+              params.encodings[k].maxFramerate = S.vvStreamFps;
+            }
+            sender.setParameters(params).catch(function () {});
+            applied = true;
+          }
+        }
+      }
+    } catch (e) {
+      /* ignore */
+    }
+    if (!applied && tries > 0 && track.readyState === 'live') {
+      setTimeout(function () {
+        applySenderCaps(track, tries - 1);
+      }, 500);
+    }
+  }
+
+  // Live-update the encoder caps when the sliders change in ShuChat settings.
+  window.addEventListener('storage', function (ev) {
+    if (ev.key !== 'settings') return;
+    S = readSettings();
+    var share = window.__shuScreenShare;
+    if (share) {
+      var t = share.getVideoTracks()[0];
+      if (t) {
+        try {
+          t.applyConstraints({ frameRate: S.vvStreamFps }).catch(function () {});
+        } catch (e) {
+          /* ignore */
+        }
+        applySenderCaps(t, 1);
+      }
+    }
+  });
+
   if (navigator.mediaDevices.getDisplayMedia) {
     var realGDM = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getDisplayMedia = function (constraints) {
       return realGDM(constraints).then(function (stream) {
         try {
+          applyStreamQuality(stream);
           window.__shuScreenShare = stream;
           window.dispatchEvent(new CustomEvent('shu-screenshare', { detail: { active: true } }));
           var clear = function () {
@@ -233,6 +312,12 @@
         a.noiseSuppression = S.vvNoiseSuppression;
         a.echoCancellation = S.vvEchoCancellation;
         a.autoGainControl = S.vvAutoGainControl;
+        // Mic channels: 'mono' (default) downmixes multi-channel devices to a
+        // single channel so listeners hear you equally in BOTH ears — Element
+        // Call auto-publishes STEREO whenever the track has 2 channels, which
+        // is the "voice only in one ear" bug for mics that expose 2 channels
+        // with signal on one. 'stereo' opts back into true 2-channel publish.
+        a.channelCount = S.vvMicChannels === 'stereo' ? { ideal: 2 } : { ideal: 1 };
         constraints = Object.assign({}, constraints, { audio: a });
       }
     } catch (e) {

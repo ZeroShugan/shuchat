@@ -267,6 +267,15 @@ export class CallEmbed {
       disposable();
     });
     this.call.stop();
+    // Guarantee a running screen share dies with the call: stop the capture
+    // tracks explicitly (the OS capture indicator turns off immediately)
+    // instead of relying on the iframe teardown to end them.
+    try {
+      const share = (this.iframe.contentWindow as any)?.__shuScreenShare as MediaStream | null;
+      share?.getTracks().forEach((t) => t.stop());
+    } catch (e) {
+      // best-effort
+    }
     this.container.removeChild(this.iframe);
     this.control.dispose();
 

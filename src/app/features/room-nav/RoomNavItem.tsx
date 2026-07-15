@@ -56,6 +56,7 @@ import {
   RoomNotificationMode,
 } from '../../hooks/useRoomsNotificationPreferences';
 import { RoomNotificationModeSwitcher } from '../../components/RoomNotificationSwitcher';
+import { ParticipantVolumeMenu } from '../../components/call-tile-menu/ParticipantVolumeMenu';
 import { useRoomCreators } from '../../hooks/useRoomCreators';
 import { useRoomPermissions } from '../../hooks/useRoomPermissions';
 import { InviteUserPrompt } from '../../components/invite-user-prompt';
@@ -344,12 +345,16 @@ type RoomNavItemProps = {
   direct?: boolean;
 };
 
-function VoiceMemberItem({ room, memberId, mx, useAuthentication, isSpeaking, onClickMember }: {
+function VoiceMemberItem({ room, memberId, mx, useAuthentication, isSpeaking, onClickMember, callEmbed }: {
   room: Room; memberId: string; mx: any; useAuthentication: boolean; isSpeaking: boolean;
   onClickMember: (userId: string, rect: DOMRect) => void;
+  callEmbed?: any; // CallEmbed of the ACTIVE call in this room (enables volume menu)
 }) {
   const [visualSpeaking, setVisualSpeaking] = useState(false);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [menuCords, setMenuCords] = useState<RectCords>();
+  // Volume only applies to OTHER people in a call we're connected to.
+  const volumeAvailable = !!callEmbed && memberId !== mx.getUserId();
 
   useEffect(() => {
     if (isSpeaking) {
@@ -378,6 +383,12 @@ function VoiceMemberItem({ room, memberId, mx, useAuthentication, isSpeaking, on
       tabIndex={0}
       onClick={(e) => onClickMember(memberId, e.currentTarget.getBoundingClientRect())}
       onKeyDown={(e) => { if (e.key === 'Enter') onClickMember(memberId, e.currentTarget.getBoundingClientRect()); }}
+      onContextMenu={(e) => {
+        if (!volumeAvailable) return; // default behavior when no call / own row
+        e.preventDefault();
+        e.stopPropagation();
+        setMenuCords({ x: e.clientX, y: e.clientY, width: 0, height: 0 });
+      }}
       style={{ display: 'flex', gap: '8px', alignItems: 'center', padding: '2px 0', cursor: 'pointer', borderRadius: '4px' }}
     >
       <Box shrink="No" style={{
@@ -408,13 +419,53 @@ function VoiceMemberItem({ room, memberId, mx, useAuthentication, isSpeaking, on
           </span>
         )}
       </span>
+      {menuCords && callEmbed && (
+        <PopOut
+          anchor={menuCords}
+          offset={0}
+          alignOffset={0}
+          position="Bottom"
+          align="Start"
+          content={
+            <FocusTrap
+              focusTrapOptions={{
+                initialFocus: false,
+                onDeactivate: () => setMenuCords(undefined),
+                clickOutsideDeactivates: true,
+                escapeDeactivates: stopPropagation,
+              }}
+            >
+              <Menu>
+                <Box direction="Column" style={{ padding: config.space.S100, minWidth: 200 }}>
+                  <ParticipantVolumeMenu callEmbed={callEmbed} userId={memberId} />
+                  <MenuItem
+                    size="300"
+                    variant="Surface"
+                    radii="300"
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                      setMenuCords(undefined);
+                      onClickMember(memberId, e.currentTarget.getBoundingClientRect());
+                    }}
+                  >
+                    <Text size="B300" truncate>
+                      Open profile
+                    </Text>
+                  </MenuItem>
+                </Box>
+              </Menu>
+            </FocusTrap>
+          }
+        >
+          <span />
+        </PopOut>
+      )}
     </div>
   );
 }
 
-function VoiceMembersListInner({ room, callMembers, mx, useAuthentication, speakers, onClickMember, optimisticUserId }: {
+function VoiceMembersListInner({ room, callMembers, mx, useAuthentication, speakers, onClickMember, optimisticUserId, callEmbed }: {
   room: Room; callMembers: any[]; mx: any; useAuthentication: boolean; speakers: Set<string>;
-  onClickMember: (userId: string, rect: DOMRect) => void; optimisticUserId?: string;
+  onClickMember: (userId: string, rect: DOMRect) => void; optimisticUserId?: string; callEmbed?: any;
 }) {
   return (
     <Box direction="Column" style={{ paddingLeft: '1.75rem', paddingBottom: '0.35rem' }}>
@@ -430,6 +481,7 @@ function VoiceMembersListInner({ room, callMembers, mx, useAuthentication, speak
             useAuthentication={useAuthentication}
             isSpeaking={speakers.has(memberId)}
             onClickMember={onClickMember}
+            callEmbed={callEmbed}
           />
         );
       })}
@@ -442,6 +494,7 @@ function VoiceMembersListInner({ room, callMembers, mx, useAuthentication, speak
           useAuthentication={useAuthentication}
           isSpeaking={false}
           onClickMember={onClickMember}
+          callEmbed={callEmbed}
         />
       )}
       {callMembers.length > 8 && (
@@ -458,7 +511,7 @@ function VoiceMembersWithSpeakers({ room, callMembers, callEmbed, mx, useAuthent
   onClickMember: (userId: string, rect: DOMRect) => void; optimisticUserId?: string;
 }) {
   const speakers = useCallSpeakers(callEmbed);
-  return <VoiceMembersListInner room={room} callMembers={callMembers} mx={mx} useAuthentication={useAuthentication} speakers={speakers} onClickMember={onClickMember} optimisticUserId={optimisticUserId} />;
+  return <VoiceMembersListInner room={room} callMembers={callMembers} mx={mx} useAuthentication={useAuthentication} speakers={speakers} onClickMember={onClickMember} optimisticUserId={optimisticUserId} callEmbed={callEmbed} />;
 }
 
 function VoiceMembersList({ room, callMembers, callEmbed, mx, useAuthentication, optimisticUserId }: {
