@@ -47,6 +47,11 @@ const copyFiles = {
       dest: '',
     },
     {
+      // Stream pop-out page (desktop app; loaded via window.open + #shuchat-popout)
+      src: 'public/popout.html',
+      dest: '',
+    },
+    {
       src: 'public/res/android',
       dest: 'public/',
     },

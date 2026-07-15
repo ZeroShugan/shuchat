@@ -70,6 +70,8 @@ import { SearchModalRenderer } from '../features/search';
 import { getFallbackSession } from '../state/sessions';
 import { CallStatusRenderer } from './CallStatusRenderer';
 import { CallEmbedProvider } from '../components/CallEmbedProvider';
+import { FloatingStreamPreview } from '../components/floating-stream/FloatingStreamPreview';
+import { CallTileMenu } from '../components/call-tile-menu/CallTileMenu';
 import { IncomingCallNotification } from '../components/IncomingCallNotification';
 import { DesktopUpdatePill } from '../components/desktop-update';
 
@@ -139,6 +141,8 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
                           <Outlet />
                         </ClientLayout>
                         <CallStatusRenderer />
+                        <FloatingStreamPreview />
+                        <CallTileMenu />
                         <UserRoomProfileRenderer />
                         <IncomingCallNotification />
                         <DesktopUpdatePill />

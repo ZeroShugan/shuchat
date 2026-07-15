@@ -58,7 +58,10 @@
       var els = document.querySelectorAll('audio');
       for (var i = 0; i < els.length; i += 1) {
         var el = els[i];
-        el.volume = S.voiceVolume;
+        // ShuChat marks per-participant volume factors on the elements
+        // (CallControl.applyUserVolumes) — honor them here too.
+        var f = typeof el.__shuUserVol === 'number' ? el.__shuUserVol : 1;
+        el.volume = Math.max(0, Math.min(1, S.voiceVolume * f));
         if (S.vvSpeakerDeviceId && el.setSinkId && el.__shuSinkId !== S.vvSpeakerDeviceId) {
           el.__shuSinkId = S.vvSpeakerDeviceId;
           el.setSinkId(S.vvSpeakerDeviceId).catch(function () {});
@@ -89,6 +92,38 @@
     } catch (e) {
       return true; // fail safe: block
     }
+  }
+
+  /* ---- screenshare capture hook -----------------------------------------
+     Expose the local screen-share MediaStream to the parent app (same origin)
+     so ShuChat can render a floating preview / pop-out of the user's own
+     stream. window.__shuScreenShare holds the live stream; a 'shu-screenshare'
+     CustomEvent fires on start ({active:true}) and end ({active:false}). */
+  if (navigator.mediaDevices.getDisplayMedia) {
+    var realGDM = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
+    navigator.mediaDevices.getDisplayMedia = function (constraints) {
+      return realGDM(constraints).then(function (stream) {
+        try {
+          window.__shuScreenShare = stream;
+          window.dispatchEvent(new CustomEvent('shu-screenshare', { detail: { active: true } }));
+          var clear = function () {
+            if (window.__shuScreenShare === stream) {
+              window.__shuScreenShare = null;
+              window.dispatchEvent(
+                new CustomEvent('shu-screenshare', { detail: { active: false } })
+              );
+            }
+          };
+          stream.getTracks().forEach(function (t) {
+            t.addEventListener('ended', clear);
+          });
+          stream.addEventListener('inactive', clear);
+        } catch (e) {
+          /* never break the share because of the preview hook */
+        }
+        return stream;
+      });
+    };
   }
 
   /* ---- input: device + constraints + optional gain/gate processing ---- */

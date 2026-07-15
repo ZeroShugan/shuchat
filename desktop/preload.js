@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('shuchatDesktop', {
   },
   checkForUpdates: () => ipcRenderer.send('shuchat-check-updates'),
   installUpdate: () => ipcRenderer.send('shuchat-install-update'),
+  // Stream pop-out window controls (used by popout.html; no-ops elsewhere).
+  popoutSetAlwaysOnTop: (flag) => ipcRenderer.send('popout:set-always-on-top', !!flag),
+  popoutFocusMain: () => ipcRenderer.send('popout:focus-main'),
 });
 
 // Forward global PTT transitions to the page as DOM events (the web app's

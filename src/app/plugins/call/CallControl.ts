@@ -161,15 +161,84 @@ export class CallControl extends EventEmitter implements CallControlState {
     return this.call.transport.send(ElementWidgetActions.DeviceMute, state);
   }
 
+  /** Per-participant volume factors (1 = 100%). Applied on top of the global
+   * voiceVolume; the media-shim's periodic loop respects the per-element
+   * `__shuUserVol` marks we set here. */
+  private userVolumes = new Map<string, number>();
+
+  public getParticipantVolume(userId: string): number | undefined {
+    return this.userVolumes.get(userId);
+  }
+
+  public setParticipantVolume(userId: string, factor: number): void {
+    this.userVolumes.set(userId, factor);
+    this.applyUserVolumes();
+    this.applyVoiceVolume();
+  }
+
+  /** Best-effort mapping of a participant's audio elements: match <audio>
+   * srcObject stream/track ids against the user's tile <video> streams; if
+   * nothing matches and there is only ONE remote participant, all played audio
+   * is theirs (local audio is never played back). Marks elements with
+   * `__shuUserVol` so every volume writer (here + media-shim) can honor it. */
+  private applyUserVolumes(): void {
+    const doc = this.document;
+    if (!doc || this.userVolumes.size === 0) return;
+    const tiles = Array.from(doc.querySelectorAll('[data-video-fit]'));
+    const audios = Array.from(doc.querySelectorAll('audio')) as (HTMLAudioElement & {
+      __shuUserVol?: number;
+    })[];
+    const distinctUsers = new Set(
+      tiles
+        .map((t) => t.querySelector('[aria-label]')?.getAttribute('aria-label'))
+        .filter((l): l is string => !!l && l.startsWith('@'))
+    );
+
+    this.userVolumes.forEach((factor, userId) => {
+      const ids = new Set<string>();
+      tiles.forEach((tile) => {
+        const label = tile.querySelector('[aria-label]')?.getAttribute('aria-label');
+        if (label !== userId) return;
+        tile.querySelectorAll('video').forEach((v) => {
+          const s = (v as HTMLVideoElement).srcObject as MediaStream | null;
+          if (!s) return;
+          ids.add(s.id);
+          s.getTracks().forEach((t) => ids.add(t.id));
+        });
+      });
+      let matched = audios.filter((a) => {
+        const s = a.srcObject as MediaStream | null;
+        if (!s) return false;
+        if (ids.has(s.id)) return true;
+        return s.getTracks().some((t) => ids.has(t.id));
+      });
+      // Sole-remote fallback: 2 distinct users in the grid = me + them, so all
+      // locally-played audio belongs to them.
+      if (matched.length === 0 && distinctUsers.size <= 2 && distinctUsers.has(userId)) {
+        matched = audios;
+      }
+      matched.forEach((a) => {
+        // eslint-disable-next-line no-param-reassign
+        a.__shuUserVol = factor;
+      });
+    });
+  }
+
+  private static effectiveVolume(el: HTMLAudioElement & { __shuUserVol?: number }): number {
+    const voiceVol = getSettings().voiceVolume ?? 0.5;
+    const factor = typeof el.__shuUserVol === 'number' ? el.__shuUserVol : 1;
+    return Math.max(0, Math.min(1, voiceVol * factor));
+  }
+
   private setSound(sound: boolean): void {
     const callDocument = this.iframe.contentDocument ?? this.iframe.contentWindow?.document;
     if (callDocument) {
-      const voiceVol = getSettings().voiceVolume ?? 0.5;
+      this.applyUserVolumes();
       callDocument.querySelectorAll('audio').forEach((el) => {
         // eslint-disable-next-line no-param-reassign
         el.muted = !sound;
         // eslint-disable-next-line no-param-reassign
-        el.volume = voiceVol;
+        el.volume = CallControl.effectiveVolume(el);
       });
     }
   }
@@ -177,10 +246,10 @@ export class CallControl extends EventEmitter implements CallControlState {
   public applyVoiceVolume(): void {
     const callDocument = this.iframe.contentDocument ?? this.iframe.contentWindow?.document;
     if (callDocument) {
-      const voiceVol = getSettings().voiceVolume ?? 0.5;
+      this.applyUserVolumes();
       callDocument.querySelectorAll('audio').forEach((el) => {
         // eslint-disable-next-line no-param-reassign
-        el.volume = voiceVol;
+        el.volume = CallControl.effectiveVolume(el);
       });
     }
   }
@@ -288,6 +357,35 @@ export class CallControl extends EventEmitter implements CallControlState {
 
   public toggleScreenshare() {
     this.screenshareButton?.click();
+  }
+
+  /**
+   * Stop the current share and immediately start a new one (source picker
+   * reopens, where the user can tick "Share audio"). The audio choice can only
+   * be made at capture start, so "share audio" on a live stream = restart.
+   */
+  public restartScreenshare() {
+    const btn = this.screenshareButton;
+    if (!btn) return;
+    if (!this.screenshare) {
+      btn.click(); // not sharing — just start
+      return;
+    }
+    btn.click(); // stop
+    // Re-click once EC reflects the stopped state (data-kind flips off primary).
+    let tries = 0;
+    const timer = setInterval(() => {
+      tries += 1;
+      const b = this.screenshareButton;
+      if (!b || tries > 40) {
+        clearInterval(timer);
+        return;
+      }
+      if (b.getAttribute('data-kind') !== 'primary') {
+        clearInterval(timer);
+        b.click(); // start again → picker opens
+      }
+    }, 250);
   }
 
   public toggleSpotlight() {
