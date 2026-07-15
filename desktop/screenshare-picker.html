@@ -47,15 +47,24 @@
   </div>
   <div class="grid" id="grid"><div class="empty">Loading…</div></div>
   <footer>
-    <label class="aud"><input type="checkbox" id="audio" /> Share audio</label>
+    <label class="aud"><input type="checkbox" id="audio" checked /> Share audio</label>
     <div class="spacer"></div>
     <button class="act cancel" id="cancel">Cancel</button>
     <button class="act share" id="share" disabled>Share</button>
   </footer>
 <script>
+  // Multi-select: click toggles a source; every selected source becomes its
+  // own stream (first = the primary share, the rest are published as extra
+  // multi-streams).
   let sources = [];
   let kind = 'screen';
-  let selected = null;
+  const selected = new Set();
+
+  function syncShareButton() {
+    const btn = document.getElementById('share');
+    btn.disabled = selected.size === 0;
+    btn.textContent = selected.size > 1 ? 'Share (' + selected.size + ')' : 'Share';
+  }
 
   function render() {
     const grid = document.getElementById('grid');
@@ -67,8 +76,13 @@
     grid.innerHTML = '';
     list.forEach((s) => {
       const card = document.createElement('div');
-      card.className = 'src' + (selected === s.id ? ' sel' : '');
-      card.onclick = () => { selected = s.id; render(); document.getElementById('share').disabled = false; };
+      card.className = 'src' + (selected.has(s.id) ? ' sel' : '');
+      card.onclick = () => {
+        if (selected.has(s.id)) selected.delete(s.id);
+        else selected.add(s.id);
+        render();
+        syncShareButton();
+      };
       const img = document.createElement('img');
       img.className = 'thumb'; img.src = s.thumbnail;
       const label = document.createElement('div');
@@ -91,7 +105,7 @@
 
   document.getElementById('cancel').onclick = () => window.sharePicker.choose(null, false);
   document.getElementById('share').onclick = () =>
-    window.sharePicker.choose(selected, document.getElementById('audio').checked);
+    window.sharePicker.choose(Array.from(selected), document.getElementById('audio').checked);
 
   window.sharePicker.getSources().then((s) => { sources = s || []; render(); });
 </script>

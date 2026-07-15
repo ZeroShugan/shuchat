@@ -203,13 +203,22 @@ ipcMain.on('sharepicker:choose', (_e, { id, audio }) => {
   if (sharePickerResolve) {
     const r = sharePickerResolve;
     sharePickerResolve = null;
-    // Resolve with the CACHED source object (matching id) — never re-query, or
-    // the ids won't line up and the share silently fails.
-    const source = id ? cachedShareSources.find((s) => s.id === id) : null;
-    logShare(`picker chose id=${id} matched=${!!source} audio=${!!audio}`);
-    r({ source: source || null, audio: !!audio });
+    // Multi-select: id is an array of source ids (legacy single id supported).
+    // Resolve against the CACHED source objects — never re-query, or the ids
+    // won't line up and the share silently fails.
+    const ids = Array.isArray(id) ? id : id ? [id] : [];
+    const sources = ids
+      .map((sid) => cachedShareSources.find((s) => s.id === sid))
+      .filter(Boolean);
+    logShare(`picker chose ${ids.length} source(s), matched=${sources.length} audio=${!!audio}`);
+    r({ sources, audio: !!audio });
   }
 });
+
+// Extra sources selected in a multi-select share: each queued entry answers
+// one follow-up getDisplayMedia request (fired by the web app via
+// __shuShareAnother) WITHOUT showing the picker again.
+let extraShareQueue = [];
 
 // ---- stream pop-out window controls (see #shuchat-popout in the open handler) ----
 ipcMain.on('popout:set-always-on-top', (e, flag) => {
@@ -251,7 +260,7 @@ function pickScreenShareSource(parent) {
     // ids and silently breaks the share) — so just close and pass it through.
     sharePickerResolve = (choice) => {
       if (!picker.isDestroyed()) picker.close();
-      resolve(choice && choice.source ? choice : null);
+      resolve(choice && choice.sources && choice.sources.length ? choice : null);
     };
 
     picker.on('closed', () => {
@@ -344,6 +353,20 @@ function createWindow() {
     (request, callback) => {
       const { desktopCapturer } = require('electron');
       logShare('getDisplayMedia request received');
+
+      // Queued extra source from a multi-select share? Grant it instantly
+      // without showing the picker (this request came from __shuShareAnother).
+      if (extraShareQueue.length > 0) {
+        const queued = extraShareQueue.shift();
+        logShare(
+          `granting QUEUED extra source id=${queued.source.id} name="${queued.source.name}" audio=${queued.audio}`
+        );
+        const g = { video: queued.source };
+        if (queued.audio) g.audio = 'loopback';
+        callback(g);
+        return;
+      }
+
       // Fetch the sources INSIDE the request handler so the DesktopCapturerSource
       // objects we later hand to callback() are bound to this pending request —
       // sources cached from a separate/earlier call can be silently rejected.
@@ -359,21 +382,32 @@ function createWindow() {
           return pickScreenShareSource(win);
         })
         .then((choice) => {
-          if (!choice || !choice.source) {
+          if (!choice || !choice.sources || choice.sources.length === 0) {
             logShare('no source chosen (cancelled) → deny');
             callback({}); // cancelled → deny gracefully
             return;
           }
+          const [first, ...rest] = choice.sources;
           logShare(
-            `granting id=${choice.source.id} name="${choice.source.name}" audio=${choice.audio}`
+            `granting id=${first.id} name="${first.name}" audio=${choice.audio} (+${rest.length} queued)`
           );
           // NB: the `audio` key must be OMITTED entirely when not sharing audio —
           // Electron rejects `audio: undefined` with "audio must be a WebFrameMain,
           // 'loopback' or 'loopbackWithMute'" and the share never starts.
-          const grant = { video: choice.source };
+          const grant = { video: first };
           if (choice.audio) grant.audio = 'loopback';
           callback(grant);
           logShare('grant callback completed OK');
+          if (rest.length > 0) {
+            extraShareQueue = rest.map((s) => ({ source: s, audio: choice.audio }));
+            // Let the primary share settle, then ask the web app to start one
+            // extra share per queued source.
+            setTimeout(() => {
+              if (win && !win.isDestroyed()) {
+                win.webContents.send('shuchat-extra-shares', rest.length);
+              }
+            }, 800);
+          }
         })
         .catch((e) => {
           logShare(`handler error: ${e && e.message ? e.message : e}`);
