@@ -11,6 +11,7 @@ import {
 } from '../hooks/useCallEmbed';
 import { callChatAtom, callEmbedAtom } from '../state/callEmbed';
 import { CallEmbed, blankOwnCallMemberships } from '../plugins/call';
+import { CallGridOverlay } from './call-grid/CallGridOverlay';
 import { useSelectedRoom } from '../hooks/router/useSelectedRoom';
 import { usePushToTalk } from '../hooks/usePushToTalk';
 import { ScreenSize, useScreenSizeContext } from '../hooks/useScreenSize';
@@ -37,6 +38,22 @@ function CallUtils({ embed }: { embed: CallEmbed }) {
     };
     window.addEventListener('shuchat-extra-shares', startExtras);
     return () => window.removeEventListener('shuchat-extra-shares', startExtras);
+  }, [embed]);
+
+  // Grid tile "Stop this stream" on the PRIMARY (EC-managed) share: the shim
+  // can't stop it itself — click EC's button without touching extra streams.
+  useEffect(() => {
+    const win = embed.iframe.contentWindow;
+    if (!win) return undefined;
+    const stopPrimary = () => embed.control.stopPrimaryScreenshareOnly();
+    win.addEventListener('shu-stop-primary-share', stopPrimary);
+    return () => {
+      try {
+        win.removeEventListener('shu-stop-primary-share', stopPrimary);
+      } catch {
+        /* iframe gone */
+      }
+    };
   }, [embed]);
 
   useCallMemberSoundSync(embed);
@@ -90,7 +107,12 @@ export function CallEmbedProvider({ children }: CallEmbedProviderProps) {
           height: '1px',
         }}
         ref={callEmbedRef}
-      />
+      >
+        {/* ShuChat's own stream grid, painted over the EC iframe (which stays
+            underneath as the audio/RTC engine). React only manages this child;
+            the imperatively-appended iframe sibling is left alone. */}
+        {callEmbed && <CallGridOverlay callEmbed={callEmbed} />}
+      </div>
     </CallEmbedContextProvider>
   );
 }

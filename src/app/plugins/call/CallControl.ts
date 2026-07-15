@@ -357,8 +357,8 @@ export class CallControl extends EventEmitter implements CallControlState {
 
   public toggleScreenshare() {
     // Stopping the primary share also stops any extra multi-streams — the main
-    // stop button always ends EVERYTHING (individual stops live in the tile
-    // right-click menu).
+    // stop button always ends EVERYTHING (individual stops live in the grid
+    // tile right-click menu).
     if (this.screenshare) {
       try {
         (this.iframe.contentWindow as any)?.__shuStopExtraShares?.();
@@ -367,6 +367,12 @@ export class CallControl extends EventEmitter implements CallControlState {
       }
     }
     this.screenshareButton?.click();
+  }
+
+  /** Stop ONLY the primary EC-managed share (used by the grid tile menu),
+   * leaving extra multi-streams running. */
+  public stopPrimaryScreenshareOnly() {
+    if (this.screenshare) this.screenshareButton?.click();
   }
 
   /**

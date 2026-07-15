@@ -318,10 +318,132 @@
     extraShares.slice().forEach(stopExtraShare);
   };
 
+  /* ---- ShuChat Stream Grid state ------------------------------------------
+     The parent app renders its OWN Discord-style grid (Element Call's grid
+     ignores extra published tracks). This is the data source: a snapshot of
+     every participant and every video publication (camera + all screen
+     shares), with live MediaStreams the parent can attach directly.
+     'shu-grid-update' fires on any roster/track change. */
+  function pubEntries(participant) {
+    var vids = [];
+    try {
+      participant.trackPublications.forEach(function (pub) {
+        if (pub.kind !== 'video') return;
+        var t = pub.track && pub.track.mediaStreamTrack;
+        if (!t || t.readyState !== 'live') return;
+        vids.push({
+          sid: pub.trackSid,
+          source: pub.source, // 'camera' | 'screen_share'
+          stream: new MediaStream([t]),
+        });
+      });
+    } catch (e) {
+      /* ignore */
+    }
+    return vids;
+  }
+
+  window.__shuGetGrid = function () {
+    var room = window.__shuLKRoom;
+    if (!room || !room.localParticipant) return null;
+    var out = [];
+    try {
+      out.push({
+        identity: room.localParticipant.identity,
+        isLocal: true,
+        isSpeaking: !!room.localParticipant.isSpeaking,
+        videos: pubEntries(room.localParticipant),
+      });
+      room.remoteParticipants.forEach(function (p) {
+        out.push({
+          identity: p.identity,
+          isLocal: false,
+          isSpeaking: !!p.isSpeaking,
+          videos: pubEntries(p),
+        });
+      });
+    } catch (e) {
+      shimLog('__shuGetGrid failed: ' + (e && e.message ? e.message : e));
+      return null;
+    }
+    return out;
+  };
+
+  /** Stop ONE of our own streams by track sid (grid tile right-click). */
+  window.__shuStopStreamBySid = function (sid) {
+    var room = window.__shuLKRoom;
+    if (!room || !room.localParticipant) return;
+    // Extra share? Stop just that entry.
+    for (var i = 0; i < extraShares.length; i += 1) {
+      var tracks = extraShares[i].tracks;
+      var match = false;
+      try {
+        room.localParticipant.trackPublications.forEach(function (pub) {
+          if (pub.trackSid === sid && pub.track && tracks.indexOf(pub.track.mediaStreamTrack) >= 0)
+            match = true;
+        });
+      } catch (e) {
+        /* ignore */
+      }
+      if (match) {
+        stopExtraShare(extraShares[i]);
+        return;
+      }
+    }
+    // Otherwise it's the primary EC-managed share → toggle it off via the
+    // parent (EC owns its lifecycle); signal with an event the parent handles.
+    window.dispatchEvent(new CustomEvent('shu-stop-primary-share'));
+  };
+
+  function gridChanged() {
+    window.dispatchEvent(new CustomEvent('shu-grid-update'));
+  }
+
+  function wireGridEvents(room) {
+    var evs = [
+      'participantConnected',
+      'participantDisconnected',
+      'trackSubscribed',
+      'trackUnsubscribed',
+      'trackPublished',
+      'trackUnpublished',
+      'localTrackPublished',
+      'localTrackUnpublished',
+      'activeSpeakersChanged',
+    ];
+    evs.forEach(function (ev) {
+      try {
+        room.on(ev, gridChanged);
+      } catch (e) {
+        /* ignore */
+      }
+    });
+    // Make sure we SUBSCRIBE to every remote video (extra multi-streams may
+    // not be auto-subscribed by EC's selective subscription).
+    var ensureSubs = function () {
+      try {
+        room.remoteParticipants.forEach(function (p) {
+          p.trackPublications.forEach(function (pub) {
+            if (pub.kind === 'video' && !pub.isSubscribed && pub.setSubscribed) {
+              pub.setSubscribed(true);
+            }
+          });
+        });
+      } catch (e) {
+        /* ignore */
+      }
+    };
+    room.on('trackPublished', ensureSubs);
+    setInterval(ensureSubs, 3000);
+    ensureSubs();
+  }
+
   // Join diagnostic: report whether the Room-expose bundle patch worked.
   var roomCheck = setInterval(function () {
     if (window.__shuLKRoom) {
       shimLog('LiveKit room exposed OK (multi-stream available)');
+      wireGridEvents(window.__shuLKRoom);
+      gridChanged();
       clearInterval(roomCheck);
       roomCheck = null;
     }
