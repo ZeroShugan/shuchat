@@ -123,15 +123,22 @@ let quitting = false;
 
 // ---- screen-share source picker ----
 let sharePickerResolve = null; // pending picker's resolve()
-let cachedShareSources = []; // real DesktopCapturerSource objects from the last list
-ipcMain.handle('sharepicker:get-sources', async () => {
-  const { desktopCapturer } = require('electron');
-  const sources = await desktopCapturer.getSources({
-    types: ['screen', 'window'],
-    thumbnailSize: { width: 320, height: 180 },
-    fetchWindowIcons: true,
-  });
-  cachedShareSources = sources; // keep the real objects; window ids can change between calls
+let cachedShareSources = []; // real DesktopCapturerSource objects for the pending request
+
+// Diagnostic log for screen-share (packaged app has no console). Lives next to
+// the app data so it survives updates: <userData>/screenshare.log.
+function logShare(msg) {
+  try {
+    fs.appendFileSync(
+      path.join(app.getPath('userData'), 'screenshare.log'),
+      `[${new Date().toISOString()}] ${msg}\n`
+    );
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function mapShareSources(sources) {
   return sources.map((s) => ({
     id: s.id,
     name: s.name,
@@ -139,6 +146,25 @@ ipcMain.handle('sharepicker:get-sources', async () => {
     thumbnail: s.thumbnail.toDataURL(),
     appIcon: s.appIcon && !s.appIcon.isEmpty() ? s.appIcon.toDataURL() : null,
   }));
+}
+
+// The picker renderer asks for the source list. Return the sources the request
+// handler already fetched (they are "blessed" for the pending getDisplayMedia
+// request); only fall back to a fresh query if none are cached.
+ipcMain.handle('sharepicker:get-sources', async () => {
+  if (cachedShareSources && cachedShareSources.length) {
+    logShare(`picker requested sources; returning ${cachedShareSources.length} cached`);
+    return mapShareSources(cachedShareSources);
+  }
+  const { desktopCapturer } = require('electron');
+  const sources = await desktopCapturer.getSources({
+    types: ['screen', 'window'],
+    thumbnailSize: { width: 320, height: 180 },
+    fetchWindowIcons: true,
+  });
+  cachedShareSources = sources;
+  logShare(`picker requested sources; fetched ${sources.length} (fallback)`);
+  return mapShareSources(sources);
 });
 ipcMain.on('sharepicker:choose', (_e, { id, audio }) => {
   if (sharePickerResolve) {
@@ -147,6 +173,7 @@ ipcMain.on('sharepicker:choose', (_e, { id, audio }) => {
     // Resolve with the CACHED source object (matching id) — never re-query, or
     // the ids won't line up and the share silently fails.
     const source = id ? cachedShareSources.find((s) => s.id === id) : null;
+    logShare(`picker chose id=${id} matched=${!!source} audio=${!!audio}`);
     r({ source: source || null, audio: !!audio });
   }
 });
@@ -251,17 +278,43 @@ function createWindow() {
   // Show our own picker window so the user chooses a screen OR a specific
   // window, and whether to include audio (Electron's native picker gives no
   // audio choice, hence the custom one).
-  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-    pickScreenShareSource(win)
-      .then((choice) => {
-        if (!choice || !choice.source) {
-          callback({}); // cancelled → deny gracefully
-          return;
-        }
-        callback({ video: choice.source, audio: choice.audio ? 'loopback' : undefined });
-      })
-      .catch(() => callback({}));
-  });
+  session.defaultSession.setDisplayMediaRequestHandler(
+    (request, callback) => {
+      const { desktopCapturer } = require('electron');
+      logShare('getDisplayMedia request received');
+      // Fetch the sources INSIDE the request handler so the DesktopCapturerSource
+      // objects we later hand to callback() are bound to this pending request —
+      // sources cached from a separate/earlier call can be silently rejected.
+      desktopCapturer
+        .getSources({
+          types: ['screen', 'window'],
+          thumbnailSize: { width: 320, height: 180 },
+          fetchWindowIcons: true,
+        })
+        .then((sources) => {
+          cachedShareSources = sources;
+          logShare(`fetched ${sources.length} sources inside handler`);
+          return pickScreenShareSource(win);
+        })
+        .then((choice) => {
+          if (!choice || !choice.source) {
+            logShare('no source chosen (cancelled) → deny');
+            callback({}); // cancelled → deny gracefully
+            return;
+          }
+          logShare(
+            `granting id=${choice.source.id} name="${choice.source.name}" audio=${choice.audio}`
+          );
+          callback({ video: choice.source, audio: choice.audio ? 'loopback' : undefined });
+        })
+        .catch((e) => {
+          logShare(`handler error: ${e && e.message ? e.message : e}`);
+          callback({});
+        });
+    },
+    // Use our custom picker, not the OS one (we add screen/window + audio choice).
+    { useSystemPicker: false }
+  );
 
   // External links open in the system browser.
   win.webContents.setWindowOpenHandler(({ url }) => {
