@@ -177,26 +177,30 @@
     }
   });
 
+  var capturingExtra = false; // true while __shuShareAnother owns the capture
+
   if (navigator.mediaDevices.getDisplayMedia) {
     var realGDM = navigator.mediaDevices.getDisplayMedia.bind(navigator.mediaDevices);
     navigator.mediaDevices.getDisplayMedia = function (constraints) {
       return realGDM(constraints).then(function (stream) {
         try {
           applyStreamQuality(stream);
-          window.__shuScreenShare = stream;
-          window.dispatchEvent(new CustomEvent('shu-screenshare', { detail: { active: true } }));
-          var clear = function () {
-            if (window.__shuScreenShare === stream) {
-              window.__shuScreenShare = null;
-              window.dispatchEvent(
-                new CustomEvent('shu-screenshare', { detail: { active: false } })
-              );
-            }
-          };
-          stream.getTracks().forEach(function (t) {
-            t.addEventListener('ended', clear);
-          });
-          stream.addEventListener('inactive', clear);
+          if (!capturingExtra) {
+            window.__shuScreenShare = stream;
+            window.dispatchEvent(new CustomEvent('shu-screenshare', { detail: { active: true } }));
+            var clear = function () {
+              if (window.__shuScreenShare === stream) {
+                window.__shuScreenShare = null;
+                window.dispatchEvent(
+                  new CustomEvent('shu-screenshare', { detail: { active: false } })
+                );
+              }
+            };
+            stream.getTracks().forEach(function (t) {
+              t.addEventListener('ended', clear);
+            });
+            stream.addEventListener('inactive', clear);
+          }
         } catch (e) {
           /* never break the share because of the preview hook */
         }
@@ -204,6 +208,132 @@
       });
     };
   }
+
+  /* ---- multi-stream: publish EXTRA screen shares via the LiveKit room ------
+     The vite build tags the LiveKit Room instance as window.__shuLKRoom (Room
+     constructor patch). Each extra share is its own capture published as an
+     additional LiveKit track (Commet's technique) — the protocol carries any
+     number of tracks per participant. Diagnostics go to the shared
+     localStorage['shuchat-call-log'] ring. */
+  function shimLog(msg) {
+    try {
+      var line = '[' + new Date().toISOString() + '] [shim] ' + msg;
+      // eslint-disable-next-line no-console
+      console.info('[shuchat-call]', line);
+      var prev = localStorage.getItem('shuchat-call-log') || '';
+      var lines = (prev + '\n' + line).split('\n').filter(Boolean);
+      localStorage.setItem('shuchat-call-log', lines.slice(-80).join('\n'));
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  var extraShares = []; // [{ stream, tracks }]
+  window.__shuExtraShareCount = 0;
+
+  function announceExtraShares() {
+    window.__shuExtraShareCount = extraShares.length;
+    window.dispatchEvent(
+      new CustomEvent('shu-extra-shares', { detail: { count: extraShares.length } })
+    );
+  }
+
+  function stopExtraShare(entry) {
+    var idx = extraShares.indexOf(entry);
+    if (idx < 0) return;
+    extraShares.splice(idx, 1);
+    var room = window.__shuLKRoom;
+    entry.tracks.forEach(function (t) {
+      try {
+        if (room && room.localParticipant) room.localParticipant.unpublishTrack(t, true);
+      } catch (e) {
+        /* best-effort */
+      }
+      try {
+        t.stop();
+      } catch (e) {
+        /* ignore */
+      }
+    });
+    try {
+      entry.stream.getTracks().forEach(function (t) {
+        t.stop();
+      });
+    } catch (e) {
+      /* ignore */
+    }
+    announceExtraShares();
+    shimLog('extra share stopped; remaining=' + extraShares.length);
+  }
+
+  window.__shuShareAnother = function () {
+    var room = window.__shuLKRoom;
+    if (!room || !room.localParticipant) {
+      shimLog('shareAnother: LiveKit room not exposed — cannot publish extra stream');
+      return Promise.reject(new Error('room not available'));
+    }
+    capturingExtra = true;
+    return navigator.mediaDevices
+      .getDisplayMedia({ video: true, audio: true })
+      .then(function (stream) {
+        capturingExtra = false;
+        var vt = stream.getVideoTracks()[0];
+        var at = stream.getAudioTracks()[0];
+        var entry = { stream: stream, tracks: [] };
+        var pubs = [];
+        if (vt) {
+          entry.tracks.push(vt);
+          pubs.push(
+            room.localParticipant.publishTrack(vt, { source: 'screen_share', simulcast: false })
+          );
+        }
+        if (at) {
+          entry.tracks.push(at);
+          pubs.push(room.localParticipant.publishTrack(at, { source: 'screen_share_audio' }));
+        }
+        return Promise.all(pubs).then(function () {
+          extraShares.push(entry);
+          announceExtraShares();
+          if (vt) {
+            applySenderCaps(vt, 40);
+            vt.addEventListener('ended', function () {
+              stopExtraShare(entry);
+            });
+          }
+          shimLog(
+            'extra share published (video=' + !!vt + ' audio=' + !!at + ') total=' +
+              extraShares.length
+          );
+          return true;
+        });
+      })
+      .catch(function (e) {
+        capturingExtra = false;
+        shimLog('shareAnother failed: ' + (e && e.message ? e.message : e));
+        throw e;
+      });
+  };
+
+  window.__shuStopExtraShares = function () {
+    extraShares.slice().forEach(stopExtraShare);
+  };
+
+  // Join diagnostic: report whether the Room-expose bundle patch worked.
+  var roomCheck = setInterval(function () {
+    if (window.__shuLKRoom) {
+      shimLog('LiveKit room exposed OK (multi-stream available)');
+      clearInterval(roomCheck);
+      roomCheck = null;
+    }
+  }, 1000);
+  setTimeout(function () {
+    if (roomCheck) {
+      clearInterval(roomCheck);
+      if (!window.__shuLKRoom) {
+        shimLog('LiveKit room NOT exposed after 30s — bundle anchor missed (EC update?)');
+      }
+    }
+  }, 30000);
 
   /* ---- input: device + constraints + optional gain/gate processing ---- */
   var realGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);

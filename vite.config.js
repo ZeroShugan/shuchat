@@ -19,11 +19,53 @@ const copyFiles = {
     },
     {
       // ShuChat Voice & Video: overwrite Element Call's index.html with a
-      // version that loads media-shim.js before the app bundle.
+      // version that (1) exposes RTCPeerConnections as window.__rtcPCs (used
+      // by useConnectionStats + per-stream bitrate caps) and (2) loads
+      // media-shim.js before the app bundle. Both injections are idempotent so
+      // they survive whether or not node_modules was hand-patched before.
       src: 'node_modules/@element-hq/element-call-embedded/dist/index.html',
       dest: 'public/element-call',
-      transform: (content) =>
-        String(content).replace('<head>', '<head><script src="./media-shim.js"></script>'),
+      transform: (content) => {
+        let html = String(content);
+        if (!html.includes('__rtcPCs')) {
+          const pcWrap =
+            '<script>(function(){\n' +
+            '  var OrigPC = window.RTCPeerConnection;\n' +
+            '  window.__rtcPCs = [];\n' +
+            '  window.RTCPeerConnection = function() {\n' +
+            '    var pc = new (Function.prototype.bind.apply(OrigPC, [null].concat([].slice.call(arguments))))();\n' +
+            '    window.__rtcPCs.push(pc);\n' +
+            '    return pc;\n' +
+            '  };\n' +
+            '  window.RTCPeerConnection.prototype = OrigPC.prototype;\n' +
+            '  Object.keys(OrigPC).forEach(function(k){ try{ window.RTCPeerConnection[k] = OrigPC[k]; }catch(e){} });\n' +
+            '  window.RTCPeerConnection.generateCertificate = OrigPC.generateCertificate;\n' +
+            '})();</script>';
+          html = html.replace('<head>', `<head>${pcWrap}`);
+        }
+        if (!html.includes('media-shim.js')) {
+          html = html.replace('<head>', '<head><script src="./media-shim.js"></script>');
+        }
+        return html;
+      },
+    },
+    {
+      // Multi-stream screenshare: expose the LiveKit Room instance to the
+      // media-shim (window.__shuLKRoom) by tagging `this` where the Room
+      // constructor creates its LocalParticipant. Regex keyed on the shape
+      // `this.localParticipant=new <Minified>(""` so it survives minifier
+      // renames; idempotent. If an Element Call update changes this shape the
+      // shim logs "LiveKit room NOT exposed" and multi-share degrades cleanly.
+      src: 'node_modules/@element-hq/element-call-embedded/dist/assets/index-*.js',
+      dest: 'public/element-call/assets',
+      transform: (content) => {
+        const js = String(content);
+        if (js.includes('__shuLKRoom')) return js;
+        return js.replace(
+          /this\.localParticipant=new ([A-Za-z_$][\w$]*)\(""/,
+          '(window.__shuLKRoom=this).localParticipant=new $1(""'
+        );
+      },
     },
     {
       src: 'call-shim/media-shim.js',

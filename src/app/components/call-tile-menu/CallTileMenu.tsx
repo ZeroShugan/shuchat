@@ -16,6 +16,16 @@ type TileTarget = {
   own: boolean;
   isOwnShare: boolean;
   video: HTMLVideoElement | null;
+  multiShareReady: boolean;
+  extraShareCount: number;
+};
+
+type ShimWindow = Window & {
+  __shuScreenShare?: MediaStream | null;
+  __shuLKRoom?: unknown;
+  __shuExtraShareCount?: number;
+  __shuShareAnother?: () => Promise<boolean>;
+  __shuStopExtraShares?: () => void;
 };
 
 /**
@@ -55,9 +65,7 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
 
       const video = tile.querySelector('video') as HTMLVideoElement | null;
       // My share tile shows the exact MediaStream the shim captured.
-      const win = callEmbed.iframe.contentWindow as
-        | (Window & { __shuScreenShare?: MediaStream | null })
-        | null;
+      const win = callEmbed.iframe.contentWindow as ShimWindow | null;
       const isOwnShare =
         own && !!video && !!win?.__shuScreenShare && video.srcObject === win.__shuScreenShare;
 
@@ -69,6 +77,8 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
         own,
         isOwnShare,
         video,
+        multiShareReady: !!win?.__shuShareAnother && !!win?.__shuLKRoom,
+        extraShareCount: win?.__shuExtraShareCount ?? 0,
       });
     };
 
@@ -90,6 +100,18 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
   };
   const handleStop = () => {
     callEmbed.control.toggleScreenshare();
+    close();
+  };
+  const handleShareAnother = () => {
+    const win = callEmbed.iframe.contentWindow as ShimWindow | null;
+    win?.__shuShareAnother?.().catch(() => {
+      /* cancelled or room unavailable — shim logs the reason */
+    });
+    close();
+  };
+  const handleStopExtras = () => {
+    const win = callEmbed.iframe.contentWindow as ShimWindow | null;
+    win?.__shuStopExtraShares?.();
     close();
   };
   const handlePopOut = () => {
@@ -135,6 +157,20 @@ function CallTileMenuInner({ callEmbed }: { callEmbed: CallEmbed }) {
                     </Text>
                   </MenuItem>
                 </>
+              )}
+              {target.own && target.multiShareReady && (
+                <MenuItem size="300" variant="Surface" radii="300" onClick={handleShareAnother}>
+                  <Text size="B300" truncate>
+                    Share another screen…
+                  </Text>
+                </MenuItem>
+              )}
+              {target.own && target.extraShareCount > 0 && (
+                <MenuItem size="300" variant="Surface" radii="300" onClick={handleStopExtras}>
+                  <Text size="B300" truncate style={{ color: '#ed4245' }}>
+                    Stop extra shares ({target.extraShareCount})
+                  </Text>
+                </MenuItem>
               )}
               {!target.own && (
                 <ParticipantVolumeMenu callEmbed={callEmbed} userId={target.userId} />
