@@ -305,7 +305,13 @@ function createWindow() {
           logShare(
             `granting id=${choice.source.id} name="${choice.source.name}" audio=${choice.audio}`
           );
-          callback({ video: choice.source, audio: choice.audio ? 'loopback' : undefined });
+          // NB: the `audio` key must be OMITTED entirely when not sharing audio —
+          // Electron rejects `audio: undefined` with "audio must be a WebFrameMain,
+          // 'loopback' or 'loopbackWithMute'" and the share never starts.
+          const grant = { video: choice.source };
+          if (choice.audio) grant.audio = 'loopback';
+          callback(grant);
+          logShare('grant callback completed OK');
         })
         .catch((e) => {
           logShare(`handler error: ${e && e.message ? e.message : e}`);
