@@ -95,18 +95,21 @@
       label.className = 'label';
       if (s.appIcon) { const ic = document.createElement('img'); ic.src = s.appIcon; label.appendChild(ic); }
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name; label.appendChild(nm);
-      if (on) {
-        const al = document.createElement('label');
-        al.className = 'audlbl';
-        const cb = document.createElement('input');
-        cb.type = 'checkbox';
-        cb.checked = selected.get(s.id).audio;
-        cb.onclick = (ev) => ev.stopPropagation();
-        cb.onchange = () => { selected.get(s.id).audio = cb.checked; };
-        al.appendChild(cb);
-        al.appendChild(document.createTextNode('audio'));
-        label.appendChild(al);
-      }
+      // Audio toggle is ALWAYS visible (enabled once the card is selected) so
+      // users can see the per-source option exists.
+      const al = document.createElement('label');
+      al.className = 'audlbl';
+      al.style.opacity = on ? '1' : '0.45';
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = on ? selected.get(s.id).audio : true;
+      cb.disabled = !on;
+      cb.onclick = (ev) => ev.stopPropagation();
+      cb.onchange = () => { if (selected.has(s.id)) selected.get(s.id).audio = cb.checked; };
+      al.appendChild(cb);
+      al.appendChild(document.createTextNode('audio'));
+      al.title = on ? 'Include this source’s audio' : 'Select this source first';
+      label.appendChild(al);
       card.appendChild(img); card.appendChild(label);
       grid.appendChild(card);
     });
