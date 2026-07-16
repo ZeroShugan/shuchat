@@ -65,6 +65,163 @@ const StreamVideo = React.memo(function StreamVideo({ stream }: { stream: MediaS
   );
 });
 
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 8;
+
+const clampPan = (
+  scale: number,
+  x: number,
+  y: number,
+  rect: { width: number; height: number }
+): [number, number] => {
+  const maxX = Math.max(0, ((scale - 1) * rect.width) / 2);
+  const maxY = Math.max(0, ((scale - 1) * rect.height) / 2);
+  return [Math.min(maxX, Math.max(-maxX, x)), Math.min(maxY, Math.max(-maxY, y))];
+};
+
+/**
+ * Video with image-viewer-style zoom & pan: wheel zooms toward the cursor,
+ * click-drag pans while zoomed in, double-click resets. Overlays (name tag,
+ * buttons) are passed as children and are NOT transformed. A clean click at
+ * 1× (no drag) calls onPlainClick — used to collapse the spotlight, matching
+ * the old click-to-return behavior.
+ */
+function ZoomableVideo({
+  stream,
+  onPlainClick,
+  children,
+}: {
+  stream: MediaStream;
+  onPlainClick?: () => void;
+  children?: React.ReactNode;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [scale, setScale] = useState(1);
+  const panRef = useRef({ x: 0, y: 0 });
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; ox: number; oy: number; moved: boolean } | null>(null);
+  const [grabbing, setGrabbing] = useState(false);
+
+  const setPanClamped = useCallback((s: number, x: number, y: number) => {
+    const rect = containerRef.current?.getBoundingClientRect();
+    const [cx, cy] = rect ? clampPan(s, x, y, rect) : [x, y];
+    panRef.current = { x: cx, y: cy };
+    setPan({ x: cx, y: cy });
+  }, []);
+
+  const reset = useCallback(() => {
+    setScale(1);
+    setPanClamped(1, 0, 0);
+  }, [setPanClamped]);
+
+  // Native non-passive wheel listener so preventDefault actually stops the
+  // page/panel from scrolling while zooming.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return undefined;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      const rect = el.getBoundingClientRect();
+      const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+      setScale((prev) => {
+        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, prev * factor));
+        // Keep the point under the cursor fixed (transform-origin = center).
+        const cxp = e.clientX - rect.left - rect.width / 2;
+        const cyp = e.clientY - rect.top - rect.height / 2;
+        const ratio = next / prev;
+        const nx = cxp - (cxp - panRef.current.x) * ratio;
+        const ny = cyp - (cyp - panRef.current.y) * ratio;
+        if (next <= ZOOM_MIN) setPanClamped(next, 0, 0);
+        else setPanClamped(next, nx, ny);
+        return next;
+      });
+    };
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [setPanClamped]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || scale <= ZOOM_MIN) return;
+    e.preventDefault();
+    drag.current = { x: e.clientX, y: e.clientY, ox: panRef.current.x, oy: panRef.current.y, moved: false };
+    setGrabbing(true);
+    containerRef.current?.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x;
+    const dy = e.clientY - d.y;
+    if (Math.abs(dx) > 2 || Math.abs(dy) > 2) d.moved = true;
+    setPanClamped(scale, d.ox + dx, d.oy + dy);
+  };
+  const endDrag = (e: React.PointerEvent) => {
+    if (drag.current) {
+      try {
+        containerRef.current?.releasePointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
+    }
+    drag.current = null;
+    setGrabbing(false);
+  };
+
+  const onClick = () => {
+    // Suppress the collapse if this click was actually a pan gesture.
+    if (drag.current?.moved) return;
+    if (scale <= ZOOM_MIN) onPlainClick?.();
+  };
+
+  return (
+    <div
+      ref={containerRef}
+      style={{
+        position: 'absolute',
+        inset: 0,
+        overflow: 'hidden',
+        cursor: scale > ZOOM_MIN ? (grabbing ? 'grabbing' : 'grab') : 'pointer',
+        touchAction: 'none',
+      }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onClick={onClick}
+      onDoubleClick={reset}
+    >
+      <div
+        style={{
+          width: '100%',
+          height: '100%',
+          transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
+          transformOrigin: 'center center',
+          transition: drag.current ? 'none' : 'transform 60ms linear',
+        }}
+      >
+        <StreamVideo stream={stream} />
+      </div>
+      {scale > ZOOM_MIN && (
+        <span
+          style={{
+            position: 'absolute',
+            left: 8,
+            top: 8,
+            padding: '2px 8px',
+            borderRadius: 6,
+            background: 'rgba(0,0,0,0.6)',
+            fontSize: 12,
+            color: '#e6e8ee',
+          }}
+        >
+          {Math.round(scale * 100)}%
+        </span>
+      )}
+      {children}
+    </div>
+  );
+}
+
 const requestTileFullscreen = (el: HTMLElement | null) => {
   if (!el) return;
   const anyEl = el as any;
@@ -422,24 +579,32 @@ function SpotlightTile({
   return (
     <div
       ref={ref}
-      style={{ position: 'relative', flex: 1, minHeight: 0, cursor: 'pointer' }}
-      onClick={onCollapse}
+      style={{ position: 'relative', flex: 1, minHeight: 0 }}
       onContextMenu={onContextMenu}
-      title="Click to return to grid"
+      title="Scroll to zoom · drag to pan · double-click to reset"
     >
-      <StreamVideo stream={stream} />
-      <span style={nameTag}>{label}</span>
-      <button
-        type="button"
-        title="Fullscreen"
-        onClick={(e) => {
-          e.stopPropagation();
-          requestTileFullscreen(ref.current);
-        }}
-        style={{ ...cornerBtn, position: 'absolute', top: 12, right: 12, padding: 6, fontSize: 16, lineHeight: 1 }}
-      >
-        ⤢
-      </button>
+      <ZoomableVideo stream={stream} onPlainClick={onCollapse}>
+        <span style={nameTag}>{label}</span>
+        <button
+          type="button"
+          title="Fullscreen"
+          onClick={(e) => {
+            e.stopPropagation();
+            requestTileFullscreen(ref.current);
+          }}
+          style={{
+            ...cornerBtn,
+            position: 'absolute',
+            top: 12,
+            right: 12,
+            padding: 6,
+            fontSize: 16,
+            lineHeight: 1,
+          }}
+        >
+          ⤢
+        </button>
+      </ZoomableVideo>
     </div>
   );
 }
