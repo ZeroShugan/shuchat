@@ -23,6 +23,7 @@
       vvSensitivity: -100,
       voiceVolume: 0.5,
       vvMicChannels: 'mono',
+      vvCamDeviceId: '',
       vvStreamResolution: '1080p',
       vvStreamFps: 30,
       vvStreamMaxKbps: 5000,
@@ -561,6 +562,11 @@
       // Strip the camera during the initial auto-join probe only (privacy).
       if (constraints && constraints.video && shouldBlockCamera()) {
         constraints = Object.assign({}, constraints, { video: false });
+      } else if (constraints && constraints.video && S.vvCamDeviceId) {
+        // Camera allowed → prefer the ShuChat-selected camera device.
+        var vc = constraints.video === true ? {} : Object.assign({}, constraints.video);
+        if (!vc.deviceId) vc.deviceId = { ideal: S.vvCamDeviceId };
+        constraints = Object.assign({}, constraints, { video: vc });
       }
       if (constraints && constraints.audio) {
         wantAudio = true;

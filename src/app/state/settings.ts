@@ -64,9 +64,16 @@ export interface Settings {
   vvPushToTalk: boolean;
   vvPttKey: string; // KeyboardEvent.code, '' = unset
   vvMicChannels: 'mono' | 'stereo'; // mono = downmix + heard in both ears (default)
+  vvCamDeviceId: string; // camera used for in-call video, '' = system default
   vvStreamResolution: '720p' | '1080p' | '1440p' | 'source'; // screenshare max resolution
   vvStreamFps: number; // screenshare target framerate (15/30/60)
   vvStreamMaxKbps: number; // screenshare max video bitrate in kbps
+  vvStreamPresets: {
+    name: string;
+    resolution: '720p' | '1080p' | '1440p' | 'source';
+    fps: number;
+    kbps: number;
+  }[];
 }
 
 const defaultSettings: Settings = {
@@ -122,9 +129,11 @@ const defaultSettings: Settings = {
   vvPushToTalk: false,
   vvPttKey: '',
   vvMicChannels: 'mono',
+  vvCamDeviceId: '',
   vvStreamResolution: '1080p',
   vvStreamFps: 30,
   vvStreamMaxKbps: 5000,
+  vvStreamPresets: [],
 };
 
 export const getSettings = (): Settings => {

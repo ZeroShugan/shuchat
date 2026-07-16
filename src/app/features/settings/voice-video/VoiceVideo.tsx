@@ -14,6 +14,7 @@ import { NativeSelect } from '../../../components/native-select';
 type DeviceLists = {
   mics: MediaDeviceInfo[];
   speakers: MediaDeviceInfo[];
+  cams: MediaDeviceInfo[];
   labeled: boolean;
 };
 
@@ -40,24 +41,27 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
   const [pttKey, setPttKey] = useSetting(settingsAtom, 'vvPttKey');
   const [voiceVolume, setVoiceVolume] = useSetting(settingsAtom, 'voiceVolume');
   const [micChannels, setMicChannels] = useSetting(settingsAtom, 'vvMicChannels');
+  const [camDeviceId, setCamDeviceId] = useSetting(settingsAtom, 'vvCamDeviceId');
   const [streamResolution, setStreamResolution] = useSetting(settingsAtom, 'vvStreamResolution');
   const [streamFps, setStreamFps] = useSetting(settingsAtom, 'vvStreamFps');
   const [streamMaxKbps, setStreamMaxKbps] = useSetting(settingsAtom, 'vvStreamMaxKbps');
+  const [streamPresets, setStreamPresets] = useSetting(settingsAtom, 'vvStreamPresets');
 
   const callEmbed = useAtomValue(callEmbedAtom);
 
   // ---- devices ----
-  const [devices, setDevices] = useState<DeviceLists>({ mics: [], speakers: [], labeled: false });
+  const [devices, setDevices] = useState<DeviceLists>({ mics: [], speakers: [], cams: [], labeled: false });
 
   const refreshDevices = useCallback(async () => {
     try {
       const list = await navigator.mediaDevices.enumerateDevices();
+      const cams = list.filter((d) => d.kind === 'videoinput');
       const mics = list.filter((d) => d.kind === 'audioinput');
       const speakers = list.filter((d) => d.kind === 'audiooutput');
       const labeled = mics.some((d) => d.label !== '');
-      setDevices({ mics, speakers, labeled });
+      setDevices({ mics, speakers, cams, labeled });
     } catch {
-      setDevices({ mics: [], speakers: [], labeled: false });
+      setDevices({ mics: [], speakers: [], cams: [], labeled: false });
     }
   }, []);
 
@@ -352,6 +356,19 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                       </select>
                     }
                   />
+                  <SettingTile
+                    title="Camera"
+                    description="Camera used when you turn on video in a call. Applies when the camera starts."
+                    after={
+                      <select
+                        className={NativeSelect}
+                        value={camDeviceId ?? ''}
+                        onChange={(e) => setCamDeviceId(e.target.value)}
+                      >
+                        {deviceOptions(devices.cams, 'Camera')}
+                      </select>
+                    }
+                  />
                 </SequenceCard>
               </Box>
 
@@ -434,6 +451,76 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                         value={streamMaxKbps ?? 5000}
                         onChange={setStreamMaxKbps}
                       />
+                    }
+                  />
+                  <SettingTile
+                    title="Presets"
+                    description="Save the current resolution/framerate/bitrate as a named preset, or apply one."
+                    after={
+                      <Box alignItems="Center" gap="200" shrink="No">
+                        <select
+                          className={NativeSelect}
+                          value=""
+                          onChange={(e) => {
+                            const pr = (streamPresets ?? []).find((x) => x.name === e.target.value);
+                            if (pr) {
+                              setStreamResolution(pr.resolution);
+                              setStreamFps(pr.fps);
+                              setStreamMaxKbps(pr.kbps);
+                            }
+                          }}
+                        >
+                          <option value="" disabled>
+                            {(streamPresets ?? []).length ? 'Apply preset…' : 'No presets yet'}
+                          </option>
+                          {(streamPresets ?? []).map((pr) => (
+                            <option key={pr.name} value={pr.name}>
+                              {pr.name} ({pr.resolution}/{pr.fps}fps/{(pr.kbps / 1000).toFixed(1)}Mbps)
+                            </option>
+                          ))}
+                        </select>
+                        <Button
+                          size="300"
+                          radii="300"
+                          variant="Secondary"
+                          fill="Soft"
+                          onClick={() => {
+                            // eslint-disable-next-line no-alert
+                            const name = window.prompt('Preset name:');
+                            if (!name) return;
+                            const next = (streamPresets ?? []).filter((x) => x.name !== name);
+                            next.push({
+                              name,
+                              resolution: streamResolution ?? '1080p',
+                              fps: streamFps ?? 30,
+                              kbps: streamMaxKbps ?? 5000,
+                            });
+                            setStreamPresets(next.slice(-20));
+                          }}
+                        >
+                          <Text size="B300">Save as preset</Text>
+                        </Button>
+                        {(streamPresets ?? []).length > 0 && (
+                          <Button
+                            size="300"
+                            radii="300"
+                            variant="Critical"
+                            fill="Soft"
+                            onClick={() => {
+                              // eslint-disable-next-line no-alert
+                              const name = window.prompt(
+                                `Delete which preset? (${(streamPresets ?? [])
+                                  .map((x) => x.name)
+                                  .join(', ')})`
+                              );
+                              if (!name) return;
+                              setStreamPresets((streamPresets ?? []).filter((x) => x.name !== name));
+                            }}
+                          >
+                            <Text size="B300">Delete…</Text>
+                          </Button>
+                        )}
+                      </Box>
                     }
                   />
                 </SequenceCard>

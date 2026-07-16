@@ -28,11 +28,29 @@
     <button id="back">Return to main window</button>
   </footer>
 <script>
+  // Match the window's shape to the stream's shape so there are no black bars.
+  var FOOTER_H = 45;
+  function fitToStream(v) {
+    var vw = v.videoWidth;
+    var vh = v.videoHeight;
+    if (!vw || !vh) return;
+    var maxW = Math.floor((screen.availWidth || 1600) * 0.9);
+    var maxH = Math.floor((screen.availHeight || 900) * 0.9) - FOOTER_H;
+    var w = Math.min(Math.max(480, window.innerWidth), maxW);
+    var h = Math.round((w * vh) / vw);
+    if (h > maxH) { h = maxH; w = Math.round((h * vw) / vh); }
+    var chromeW = window.outerWidth - window.innerWidth;
+    var chromeH = window.outerHeight - window.innerHeight;
+    try { window.resizeTo(w + chromeW, h + FOOTER_H + chromeH); } catch (e) {}
+  }
+
   // The opener (same origin, same process) calls this with the live stream.
   window.__shuSetStream = function (stream, title) {
     var v = document.getElementById('v');
     v.srcObject = stream;
     v.play().catch(function () {});
+    v.addEventListener('loadedmetadata', function () { fitToStream(v); });
+    v.addEventListener('resize', function () { fitToStream(v); }); // source size changes
     if (title) {
       document.getElementById('title').textContent = title;
       document.title = 'ShuChat — ' + title;

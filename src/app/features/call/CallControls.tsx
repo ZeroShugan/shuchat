@@ -29,6 +29,8 @@ import {
 } from './Controls';
 import { CallEmbed, useCallControlState } from '../../plugins/call';
 import { useVoiceControls } from '../../hooks/useVoiceControls';
+import { useSetting } from '../../state/hooks/settings';
+import { settingsAtom } from '../../state/settings';
 import { useResizeObserver } from '../../hooks/useResizeObserver';
 import { stopPropagation } from '../../utils/keyboard';
 import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
@@ -53,6 +55,37 @@ export function CallControls({ callEmbed }: CallControlsProps) {
   // Mic/sound go through the unified hook so ALL mute/deafen buttons stay in
   // sync and play the feedback tones.
   const { microphone, sound, toggleMicrophone, toggleSound } = useVoiceControls();
+
+  // Camera picker: starting the camera first shows a device menu (like the
+  // screen-share picker); stopping toggles directly.
+  const [camCords, setCamCords] = useState<RectCords>();
+  const [cams, setCams] = useState<MediaDeviceInfo[]>([]);
+  const [, setCamDeviceId] = useSetting(settingsAtom, 'vvCamDeviceId');
+  const handleVideoToggle = async () => {
+    if (video) {
+      callEmbed.control.toggleVideo();
+      return;
+    }
+    try {
+      const list = await navigator.mediaDevices.enumerateDevices();
+      const found = list.filter((d) => d.kind === 'videoinput' && d.label !== '');
+      if (found.length > 1) {
+        setCams(found);
+        const btn = document.querySelector('[data-shu-video-btn]');
+        setCamCords(btn ? btn.getBoundingClientRect() : undefined);
+        if (btn) return; // menu opens; selection starts the camera
+      }
+    } catch {
+      /* fall through to direct start */
+    }
+    callEmbed.control.toggleVideo();
+  };
+  const startCameraWith = (deviceId: string) => {
+    setCamDeviceId(deviceId);
+    setCamCords(undefined);
+    // give the settings storage event a beat to reach the call iframe shim
+    setTimeout(() => callEmbed.control.toggleVideo(), 120);
+  };
 
   const [cords, setCords] = useState<RectCords>();
 
@@ -103,7 +136,47 @@ export function CallControls({ callEmbed }: CallControlsProps) {
           </Box>
           {!compact && <ControlDivider />}
           <Box shrink="No" alignItems="Inherit" justifyContent="Inherit" gap="200">
-            <VideoButton enabled={video} onToggle={() => callEmbed.control.toggleVideo()} />
+            <span data-shu-video-btn>
+              <VideoButton enabled={video} onToggle={handleVideoToggle} />
+            </span>
+            <PopOut
+              anchor={camCords}
+              position="Top"
+              align="Center"
+              content={
+                <FocusTrap
+                  focusTrapOptions={{
+                    initialFocus: false,
+                    onDeactivate: () => setCamCords(undefined),
+                    clickOutsideDeactivates: true,
+                    escapeDeactivates: stopPropagation,
+                  }}
+                >
+                  <Menu>
+                    <Box direction="Column" style={{ padding: config.space.S100, minWidth: 220 }}>
+                      <Box style={{ padding: config.space.S100 }}>
+                        <Text size="L400">Start camera with…</Text>
+                      </Box>
+                      {cams.map((c) => (
+                        <MenuItem
+                          key={c.deviceId}
+                          size="300"
+                          variant="Surface"
+                          radii="300"
+                          onClick={() => startCameraWith(c.deviceId)}
+                        >
+                          <Text size="B300" truncate>
+                            {c.label || 'Camera'}
+                          </Text>
+                        </MenuItem>
+                      ))}
+                    </Box>
+                  </Menu>
+                </FocusTrap>
+              }
+            >
+              <span />
+            </PopOut>
             <ScreenShareButton
               enabled={screenshare}
               onToggle={() => callEmbed.control.toggleScreenshare()}
