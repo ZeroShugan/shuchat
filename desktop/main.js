@@ -199,19 +199,21 @@ ipcMain.handle('sharepicker:get-sources', async () => {
   logShare(`picker requested sources; fetched ${sources.length} (fallback)`);
   return mapShareSources(sources);
 });
-ipcMain.on('sharepicker:choose', (_e, { id, audio }) => {
+ipcMain.on('sharepicker:choose', (_e, selection) => {
   if (sharePickerResolve) {
     const r = sharePickerResolve;
     sharePickerResolve = null;
-    // Multi-select: id is an array of source ids (legacy single id supported).
-    // Resolve against the CACHED source objects — never re-query, or the ids
-    // won't line up and the share silently fails.
-    const ids = Array.isArray(id) ? id : id ? [id] : [];
-    const sources = ids
-      .map((sid) => cachedShareSources.find((s) => s.id === sid))
+    // selection = array of { id, audio }. Resolve each against the CACHED
+    // source objects (never re-query — ids won't line up and the share fails).
+    const sel = Array.isArray(selection) ? selection : [];
+    const items = sel
+      .map((e) => {
+        const source = cachedShareSources.find((s) => s.id === e.id);
+        return source ? { source, audio: !!e.audio } : null;
+      })
       .filter(Boolean);
-    logShare(`picker chose ${ids.length} source(s), matched=${sources.length} audio=${!!audio}`);
-    r({ sources, audio: !!audio });
+    logShare(`picker chose ${sel.length} source(s), matched=${items.length}`);
+    r({ items });
   }
 });
 
@@ -260,7 +262,7 @@ function pickScreenShareSource(parent) {
     // ids and silently breaks the share) — so just close and pass it through.
     sharePickerResolve = (choice) => {
       if (!picker.isDestroyed()) picker.close();
-      resolve(choice && choice.sources && choice.sources.length ? choice : null);
+      resolve(choice && choice.items && choice.items.length ? choice : null);
     };
 
     picker.on('closed', () => {
@@ -296,6 +298,41 @@ function applyCloseAction(action, e) {
   }
 }
 
+// Recovery prompt when the renderer crashes/hangs — Reload (fresh page, keeps
+// the app running) / Restart (relaunch the whole app) / Wait. Debounced so a
+// crash-loop doesn't spam dialogs.
+let recoveryOpen = false;
+function offerRecovery(message) {
+  if (recoveryOpen || quitting || !win || win.isDestroyed()) return;
+  recoveryOpen = true;
+  dialog
+    .showMessageBox(win, {
+      type: 'warning',
+      buttons: ['Reload', 'Restart app', 'Wait'],
+      defaultId: 0,
+      cancelId: 2,
+      noLink: true,
+      title: 'ShuChat problem',
+      message,
+      detail: 'Reload refreshes the page. Restart relaunches the whole app.',
+    })
+    .then(({ response }) => {
+      recoveryOpen = false;
+      if (response === 0) {
+        logMain('recovery: reload');
+        if (win && !win.isDestroyed()) win.webContents.reloadIgnoringCache();
+      } else if (response === 1) {
+        logMain('recovery: restart');
+        quitting = true;
+        app.relaunch();
+        app.exit(0);
+      }
+    })
+    .catch(() => {
+      recoveryOpen = false;
+    });
+}
+
 function createWindow() {
   const cfg = readConfig();
   if (!fs.existsSync(configPath())) writeConfig(cfg); // materialize for easy editing
@@ -324,8 +361,14 @@ function createWindow() {
   });
   win.webContents.on('render-process-gone', (_e, details) => {
     logMain(`RENDERER GONE: reason=${details.reason} exitCode=${details.exitCode}`);
+    // 'clean-exit' is a normal reload; only offer recovery on real failures.
+    if (details.reason === 'clean-exit') return;
+    offerRecovery(`The app stopped responding (${details.reason}).`);
   });
-  win.webContents.on('unresponsive', () => logMain('window unresponsive'));
+  win.webContents.on('unresponsive', () => {
+    logMain('window unresponsive');
+    offerRecovery('ShuChat is not responding.');
+  });
   win.webContents.on('responsive', () => logMain('window responsive again'));
   win.webContents.on('did-fail-load', (_e, code, desc, url) => {
     logMain(`did-fail-load code=${code} desc=${desc} url=${url}`);
@@ -382,26 +425,25 @@ function createWindow() {
           return pickScreenShareSource(win);
         })
         .then((choice) => {
-          if (!choice || !choice.sources || choice.sources.length === 0) {
+          if (!choice || !choice.items || choice.items.length === 0) {
             logShare('no source chosen (cancelled) → deny');
             callback({}); // cancelled → deny gracefully
             return;
           }
-          const [first, ...rest] = choice.sources;
+          const [first, ...rest] = choice.items;
           logShare(
-            `granting id=${first.id} name="${first.name}" audio=${choice.audio} (+${rest.length} queued)`
+            `granting id=${first.source.id} name="${first.source.name}" audio=${first.audio} (+${rest.length} queued)`
           );
           // NB: the `audio` key must be OMITTED entirely when not sharing audio —
           // Electron rejects `audio: undefined` with "audio must be a WebFrameMain,
           // 'loopback' or 'loopbackWithMute'" and the share never starts.
-          const grant = { video: first };
-          if (choice.audio) grant.audio = 'loopback';
+          const grant = { video: first.source };
+          if (first.audio) grant.audio = 'loopback';
           callback(grant);
           logShare('grant callback completed OK');
           if (rest.length > 0) {
-            extraShareQueue = rest.map((s) => ({ source: s, audio: choice.audio }));
-            // Let the primary share settle, then ask the web app to start one
-            // extra share per queued source.
+            // each queued entry keeps its own audio choice
+            extraShareQueue = rest.map((it) => ({ source: it.source, audio: it.audio }));
             setTimeout(() => {
               if (win && !win.isDestroyed()) {
                 win.webContents.send('shuchat-extra-shares', rest.length);
@@ -582,6 +624,20 @@ function createTray() {
   tray.setContextMenu(
     Menu.buildFromTemplate([
       { label: 'Open ShuChat', click: () => { if (win) { win.show(); win.focus(); } } },
+      {
+        label: 'Reload Page',
+        click: () => {
+          if (win && !win.isDestroyed()) win.webContents.reloadIgnoringCache();
+        },
+      },
+      {
+        label: 'Restart App',
+        click: () => {
+          quitting = true;
+          app.relaunch();
+          app.exit(0);
+        },
+      },
       { label: 'Check for Updates…', click: () => checkForUpdatesInteractive() },
       { label: 'Open Logs Folder', click: () => { shell.openPath(logsDir()); } },
       { type: 'separator' },

@@ -23,7 +23,11 @@
   .thumb { width: 100%; aspect-ratio: 16/9; object-fit: cover; background: #17181b; display: block; }
   .label { display: flex; align-items: center; gap: 6px; padding: 7px 9px; font-size: .76rem; }
   .label img { width: 16px; height: 16px; border-radius: 3px; }
-  .label span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .label .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .audlbl { display: flex; align-items: center; gap: 4px; font-size: .68rem; color: #9aa0ad;
+            cursor: pointer; flex-shrink: 0; }
+  .audlbl input { margin: 0; }
+  .src.sel .audlbl { color: #cdd0d6; }
   footer { position: fixed; bottom: 0; left: 0; right: 0; background: #202225; border-top: 1px solid #34363c;
            display: flex; align-items: center; gap: 16px; padding: 12px 18px; }
   .aud { display: flex; align-items: center; gap: 7px; font-size: .82rem; color: #cdd0d6; cursor: pointer; }
@@ -47,18 +51,18 @@
   </div>
   <div class="grid" id="grid"><div class="empty">Loading…</div></div>
   <footer>
-    <label class="aud"><input type="checkbox" id="audio" checked /> Share audio</label>
+    <div class="sub" style="padding:0">Pick one or more — each becomes its own stream. Toggle audio per source.</div>
     <div class="spacer"></div>
     <button class="act cancel" id="cancel">Cancel</button>
     <button class="act share" id="share" disabled>Share</button>
   </footer>
 <script>
-  // Multi-select: click toggles a source; every selected source becomes its
-  // own stream (first = the primary share, the rest are published as extra
-  // multi-streams).
+  // Multi-select: click a card toggles selection; every selected source becomes
+  // its own stream, each with its OWN "audio" toggle (first = primary share,
+  // rest = extra multi-streams).
   let sources = [];
   let kind = 'screen';
-  const selected = new Set();
+  const selected = new Map(); // id -> { audio: bool }
 
   function syncShareButton() {
     const btn = document.getElementById('share');
@@ -75,11 +79,13 @@
     }
     grid.innerHTML = '';
     list.forEach((s) => {
+      const on = selected.has(s.id);
       const card = document.createElement('div');
-      card.className = 'src' + (selected.has(s.id) ? ' sel' : '');
-      card.onclick = () => {
+      card.className = 'src' + (on ? ' sel' : '');
+      card.onclick = (e) => {
+        if (e.target.closest('.audlbl')) return; // don't toggle selection via the audio control
         if (selected.has(s.id)) selected.delete(s.id);
-        else selected.add(s.id);
+        else selected.set(s.id, { audio: true });
         render();
         syncShareButton();
       };
@@ -88,7 +94,19 @@
       const label = document.createElement('div');
       label.className = 'label';
       if (s.appIcon) { const ic = document.createElement('img'); ic.src = s.appIcon; label.appendChild(ic); }
-      const nm = document.createElement('span'); nm.textContent = s.name; label.appendChild(nm);
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name; label.appendChild(nm);
+      if (on) {
+        const al = document.createElement('label');
+        al.className = 'audlbl';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = selected.get(s.id).audio;
+        cb.onclick = (ev) => ev.stopPropagation();
+        cb.onchange = () => { selected.get(s.id).audio = cb.checked; };
+        al.appendChild(cb);
+        al.appendChild(document.createTextNode('audio'));
+        label.appendChild(al);
+      }
       card.appendChild(img); card.appendChild(label);
       grid.appendChild(card);
     });
@@ -103,9 +121,12 @@
     };
   });
 
-  document.getElementById('cancel').onclick = () => window.sharePicker.choose(null, false);
-  document.getElementById('share').onclick = () =>
-    window.sharePicker.choose(Array.from(selected), document.getElementById('audio').checked);
+  document.getElementById('cancel').onclick = () => window.sharePicker.choose([]);
+  document.getElementById('share').onclick = () => {
+    const out = [];
+    selected.forEach((v, id) => out.push({ id, audio: v.audio }));
+    window.sharePicker.choose(out);
+  };
 
   window.sharePicker.getSources().then((s) => { sources = s || []; render(); });
 </script>
