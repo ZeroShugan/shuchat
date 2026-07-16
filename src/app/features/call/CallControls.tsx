@@ -1,4 +1,4 @@
-import React, { MouseEventHandler, useCallback, useRef, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   Box,
   Button,
@@ -92,17 +92,11 @@ export function CallControls({ callEmbed }: CallControlsProps) {
     setTimeout(() => callEmbed.control.toggleVideo(), 120);
   };
 
-  const [cords, setCords] = useState<RectCords>();
-
-  const handleOpenMenu: MouseEventHandler<HTMLButtonElement> = (evt) => {
-    setCords(evt.currentTarget.getBoundingClientRect());
-  };
-
-  // Element Call's own dialogs are hidden under the ShuChat stream grid, so
-  // the menu opens ShuChat's settings (Voice & Video) instead.
+  // The gear button opens ShuChat's own Voice & Video settings directly
+  // (Element Call's dialogs render under the ShuChat stream grid, so its
+  // native settings button is unreachable anyway).
   const [settingsOpen, setSettingsOpen] = useState(false);
   const handleSettingsClick = () => {
-    setCords(undefined);
     setSettingsOpen(true);
   };
 
@@ -219,50 +213,30 @@ export function CallControls({ callEmbed }: CallControlsProps) {
         <Box alignItems="Center" gap="Inherit" grow="Yes" direction={compact ? 'Column' : 'Row'}>
           <Box shrink="No" alignItems="Inherit" justifyContent="Inherit" gap="200">
             <ChatButton />
-            <PopOut
-              anchor={cords}
+            <TooltipProvider
               position="Top"
-              align="Center"
-              content={
-                <FocusTrap
-                  focusTrapOptions={{
-                    initialFocus: false,
-                    onDeactivate: () => setCords(undefined),
-                    clickOutsideDeactivates: true,
-                    isKeyForward: (evt: KeyboardEvent) => evt.key === 'ArrowDown',
-                    isKeyBackward: (evt: KeyboardEvent) => evt.key === 'ArrowUp',
-                    escapeDeactivates: stopPropagation,
-                  }}
-                >
-                  <Menu>
-                    <Box direction="Column" style={{ padding: config.space.S100 }}>
-                      <MenuItem
-                        size="300"
-                        variant="Surface"
-                        radii="300"
-                        onClick={handleSettingsClick}
-                      >
-                        <Text size="B300" truncate>
-                          Voice &amp; Video Settings
-                        </Text>
-                      </MenuItem>
-                    </Box>
-                  </Menu>
-                </FocusTrap>
+              tooltip={
+                <Tooltip>
+                  <Text size="T200">Voice &amp; Video Settings</Text>
+                </Tooltip>
               }
             >
-              <IconButton
-                variant="Surface"
-                fill="Soft"
-                radii="400"
-                size="400"
-                onClick={handleOpenMenu}
-                outlined
-                aria-pressed={!!cords}
-              >
-                <Icon size="400" src={Icons.VerticalDots} />
-              </IconButton>
-            </PopOut>
+              {(anchorRef) => (
+                <IconButton
+                  ref={anchorRef}
+                  variant="Surface"
+                  fill="Soft"
+                  radii="400"
+                  size="400"
+                  onClick={handleSettingsClick}
+                  outlined
+                  aria-pressed={settingsOpen}
+                  aria-label="Voice & Video Settings"
+                >
+                  <Icon size="400" src={Icons.Setting} />
+                </IconButton>
+              )}
+            </TooltipProvider>
           </Box>
           <Box shrink="No" direction="Column">
             <Button

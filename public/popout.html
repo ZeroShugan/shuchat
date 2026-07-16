@@ -9,7 +9,12 @@
   html, body { height: 100%; }
   body { margin: 0; background: #0e0e12; color: #e6e8ee; font-family: system-ui, "Segoe UI", sans-serif;
          display: flex; flex-direction: column; }
-  video { flex: 1; min-height: 0; width: 100%; object-fit: contain; background: #000; }
+  #stage { flex: 1; min-height: 0; position: relative; overflow: hidden; background: #000;
+           cursor: default; touch-action: none; }
+  #zoomer { width: 100%; height: 100%; transform-origin: center center; will-change: transform; }
+  video { width: 100%; height: 100%; object-fit: contain; display: block; background: #000; }
+  #zoombadge { position: absolute; left: 8px; top: 8px; padding: 2px 8px; border-radius: 6px;
+               background: rgba(0,0,0,0.6); font-size: 12px; display: none; pointer-events: none; }
   footer { display: flex; align-items: center; gap: 14px; padding: 8px 12px; background: #17181c;
            border-top: 1px solid #2b2d33; }
   #title { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
@@ -21,9 +26,13 @@
 </style>
 </head>
 <body>
-  <video id="v" autoplay muted playsinline></video>
+  <div id="stage" title="Scroll to zoom · drag to pan · double-click to reset">
+    <div id="zoomer"><video id="v" autoplay muted playsinline></video></div>
+    <span id="zoombadge">100%</span>
+  </div>
   <footer>
     <span id="title">Stream</span>
+    <button id="reset">Reset zoom</button>
     <label><input type="checkbox" id="top" checked /> Stay on top</label>
     <button id="back">Return to main window</button>
   </footer>
@@ -50,6 +59,79 @@
     var chromeH = window.outerHeight - window.innerHeight;
     try { window.resizeTo(w + chromeW, h + FOOTER_H + chromeH); } catch (e) {}
   }
+
+  // ---- Image-viewer-style zoom & pan (mirrors the in-app spotlight) ----
+  var ZOOM_MIN = 1, ZOOM_MAX = 8;
+  var stage = document.getElementById('stage');
+  var zoomer = document.getElementById('zoomer');
+  var badge = document.getElementById('zoombadge');
+  var scale = 1, panX = 0, panY = 0;
+  var drag = null;
+
+  function apply() {
+    zoomer.style.transition = drag ? 'none' : 'transform 60ms linear';
+    zoomer.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + scale + ')';
+    if (scale > ZOOM_MIN) {
+      badge.style.display = 'block';
+      badge.textContent = Math.round(scale * 100) + '%';
+      stage.style.cursor = drag ? 'grabbing' : 'grab';
+    } else {
+      badge.style.display = 'none';
+      stage.style.cursor = 'default';
+    }
+  }
+  function clampPan() {
+    var r = stage.getBoundingClientRect();
+    var maxX = Math.max(0, (scale - 1) * r.width / 2);
+    var maxY = Math.max(0, (scale - 1) * r.height / 2);
+    panX = Math.min(maxX, Math.max(-maxX, panX));
+    panY = Math.min(maxY, Math.max(-maxY, panY));
+  }
+  function reset() { scale = 1; panX = 0; panY = 0; apply(); }
+
+  stage.addEventListener('wheel', function (e) {
+    e.preventDefault();
+    var r = stage.getBoundingClientRect();
+    var factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+    var next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, scale * factor));
+    var cxp = e.clientX - r.left - r.width / 2;
+    var cyp = e.clientY - r.top - r.height / 2;
+    var ratio = next / scale;
+    if (next <= ZOOM_MIN) { panX = 0; panY = 0; }
+    else {
+      panX = cxp - (cxp - panX) * ratio;
+      panY = cyp - (cyp - panY) * ratio;
+    }
+    scale = next;
+    clampPan();
+    apply();
+  }, { passive: false });
+
+  stage.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0 || scale <= ZOOM_MIN) return;
+    e.preventDefault();
+    drag = { x: e.clientX, y: e.clientY, ox: panX, oy: panY };
+    try { stage.setPointerCapture(e.pointerId); } catch (err) {}
+    apply();
+  });
+  stage.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    panX = drag.ox + (e.clientX - drag.x);
+    panY = drag.oy + (e.clientY - drag.y);
+    clampPan();
+    apply();
+  });
+  function endDrag(e) {
+    if (!drag) return;
+    try { stage.releasePointerCapture(e.pointerId); } catch (err) {}
+    drag = null;
+    apply();
+  }
+  stage.addEventListener('pointerup', endDrag);
+  stage.addEventListener('pointercancel', endDrag);
+  stage.addEventListener('dblclick', reset);
+  document.getElementById('reset').addEventListener('click', reset);
+  window.addEventListener('resize', function () { clampPan(); apply(); });
 
   // The opener (same origin, same process) calls this with the live stream.
   window.__shuSetStream = function (stream, title) {
