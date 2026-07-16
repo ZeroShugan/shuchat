@@ -35,7 +35,17 @@ const identityToUserId = (identity: string): string => {
   return i > 0 ? identity.slice(0, i) : identity;
 };
 
-function StreamVideo({ stream, muted }: { stream: MediaStream; muted: boolean }) {
+/** Signature so we only re-render on real roster/track/speaker changes. */
+const gridSignature = (g: GridParticipant[] | null): string =>
+  g
+    ? g
+        .map(
+          (p) => `${p.identity}:${p.isSpeaking ? 1 : 0}:${p.videos.map((v) => v.sid).join(',')}`
+        )
+        .join('|')
+    : '';
+
+const StreamVideo = React.memo(function StreamVideo({ stream }: { stream: MediaStream }) {
   const ref = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     const v = ref.current;
@@ -48,22 +58,39 @@ function StreamVideo({ stream, muted }: { stream: MediaStream; muted: boolean })
     <video
       ref={ref}
       autoPlay
-      muted={muted}
+      muted
       playsInline
       style={{ width: '100%', height: '100%', objectFit: 'contain', background: '#000' }}
     />
   );
-}
+});
+
+const requestTileFullscreen = (el: HTMLElement | null) => {
+  if (!el) return;
+  const anyEl = el as any;
+  (el.requestFullscreen?.bind(el) || anyEl.webkitRequestFullscreen?.bind(el))?.();
+};
+
+const cornerBtn: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  border: '1px solid rgba(255,255,255,0.25)',
+  borderRadius: 6,
+  background: 'rgba(0,0,0,0.55)',
+  color: '#e6e8ee',
+  padding: 4,
+  cursor: 'pointer',
+};
 
 type TileMenu = { cords: RectCords; userId: string; own: boolean; video?: GridVideo };
 
 /**
  * ShuChat's own Discord-style call grid, rendered ON TOP of the Element Call
  * iframe (which stays alive underneath as the audio/RTC engine). One tile per
- * person (avatar + name + speaking ring) plus one tile per video stream
- * (camera or any of the multi screen-shares). Click a stream = it fills the
- * panel (Exit bottom-right or click again to return). Right-click a stream:
- * stop (own) / volume (others) / pop out.
+ * person plus one tile per video stream (camera or any screen-share). Click a
+ * stream = it fills the panel (click again to return). Hover a stream tile for
+ * a fullscreen button; right-click for stop/volume/pop-out.
  */
 export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
   const mx = useMatrixClient();
@@ -73,17 +100,27 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
   const [grid, setGrid] = useState<GridParticipant[] | null>(null);
   const [spotlightSid, setSpotlightSid] = useState<string | null>(null);
   const [menu, setMenu] = useState<TileMenu | undefined>();
+  const sigRef = useRef('');
 
-  // Poll the shim's grid snapshot on change events (+ slow safety interval).
+  // Refresh the grid snapshot on change events (+ slow safety interval), but
+  // only commit to React state when the signature actually changed — avoids
+  // needless re-renders (and the stream objects are cached in the shim, so
+  // videos never re-attach).
   useEffect(() => {
     if (!joined) return undefined;
     const win = callEmbed.iframe.contentWindow as GridWindow | null;
     if (!win) return undefined;
     const refresh = () => {
+      let next: GridParticipant[] | null = null;
       try {
-        setGrid(win.__shuGetGrid ? win.__shuGetGrid() : null);
+        next = win.__shuGetGrid ? win.__shuGetGrid() : null;
       } catch {
-        setGrid(null);
+        next = null;
+      }
+      const sig = gridSignature(next);
+      if (sig !== sigRef.current) {
+        sigRef.current = sig;
+        setGrid(next);
       }
     };
     refresh();
@@ -120,17 +157,21 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
     [callEmbed.room, mx, useAuthentication]
   );
 
-  // Not joined yet, or the room hook is unavailable (EC update) → let EC's own
-  // UI show through (clean degradation).
   if (!joined || !grid || grid.length === 0) return null;
 
   const allVideos: { p: GridParticipant; v: GridVideo }[] = [];
   grid.forEach((p) => p.videos.forEach((v) => allVideos.push({ p, v })));
   const spotlight = spotlightSid ? allVideos.find((x) => x.v.sid === spotlightSid) : undefined;
 
+  // A tile menu only makes sense with items: others → volume; own stream →
+  // stop; any stream (desktop) → pop out. Own PERSON tile (no video) = no menu
+  // (prevents the focus-trap "no tabbable node" crash).
+  const menuHasItems = (own: boolean, video?: GridVideo) =>
+    !own || !!video || (!!video && popOutSupported());
   const openTileMenu = (evt: React.MouseEvent, userId: string, own: boolean, video?: GridVideo) => {
     evt.preventDefault();
     evt.stopPropagation();
+    if (!menuHasItems(own, video)) return;
     setMenu({ cords: { x: evt.clientX, y: evt.clientY, width: 0, height: 0 }, userId, own, video });
   };
 
@@ -141,6 +182,7 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
     background: 'rgba(255,255,255,0.04)',
     border: '1px solid rgba(255,255,255,0.08)',
     minHeight: 0,
+    minWidth: 0,
   };
   const nameTag: React.CSSProperties = {
     position: 'absolute',
@@ -157,44 +199,27 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
     textOverflow: 'ellipsis',
   };
 
+  const tileCount = allVideos.length + grid.length;
+
   return (
     <div
       className={classNames(ContainerColor({ variant: 'Background' }))}
       style={{ position: 'absolute', inset: 0, zIndex: 10, display: 'flex', flexDirection: 'column' }}
     >
       {spotlight ? (
-        // ---- Spotlight: one stream fills the panel ----
-        <div
-          style={{ position: 'relative', flex: 1, minHeight: 0, cursor: 'pointer' }}
-          onClick={() => setSpotlightSid(null)}
+        <SpotlightTile
+          key={spotlight.v.sid}
+          stream={spotlight.v.stream}
+          label={`${memberName(identityToUserId(spotlight.p.identity))}${
+            spotlight.v.source === 'camera' ? ' — Camera' : ' — Stream'
+          }`}
+          nameTag={nameTag}
+          onCollapse={() => setSpotlightSid(null)}
           onContextMenu={(e) =>
             openTileMenu(e, identityToUserId(spotlight.p.identity), spotlight.p.isLocal, spotlight.v)
           }
-        >
-          <StreamVideo stream={spotlight.v.stream} muted />
-          <span style={nameTag}>
-            {memberName(identityToUserId(spotlight.p.identity))}
-            {spotlight.v.source === 'camera' ? ' — Camera' : ' — Stream'}
-          </span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setSpotlightSid(null);
-            }}
-            style={{
-              position: 'absolute', right: 12, bottom: 12,
-              display: 'flex', alignItems: 'center', gap: 6,
-              border: '1px solid rgba(255,255,255,0.3)', borderRadius: 8,
-              background: 'rgba(0,0,0,0.6)', color: '#e6e8ee',
-              padding: '6px 12px', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
-            }}
-          >
-            <Icon size="50" src={Icons.ChevronLeft} /> Back to grid
-          </button>
-        </div>
+        />
       ) : (
-        // ---- Grid: person tiles + one tile per stream ----
         <div
           style={{
             flex: 1,
@@ -202,11 +227,14 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
             display: 'grid',
             gap: 10,
             padding: 12,
-            gridTemplateColumns: `repeat(auto-fit, minmax(${
-              allVideos.length + grid.length > 4 ? 220 : 320
-            }px, 1fr))`,
+            // min(100%, …) lets columns shrink below the ideal width on narrow
+            // panels so there is NEVER a horizontal scrollbar — tiles reflow.
+            gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${
+              tileCount > 4 ? 200 : 300
+            }px), 1fr))`,
             gridAutoRows: '1fr',
             alignItems: 'stretch',
+            overflowX: 'hidden',
             overflowY: 'auto',
           }}
         >
@@ -244,19 +272,15 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
           {allVideos.map(({ p, v }) => {
             const userId = identityToUserId(p.identity);
             return (
-              <div
+              <StreamTile
                 key={v.sid}
-                style={{ ...tileBase, cursor: 'pointer', aspectRatio: '16/9' }}
+                stream={v.stream}
+                label={`${memberName(userId)}${v.source === 'camera' ? ' — Camera' : ' — Stream'}`}
+                tileBase={tileBase}
+                nameTag={nameTag}
                 onClick={() => setSpotlightSid(v.sid)}
                 onContextMenu={(e) => openTileMenu(e, userId, p.isLocal, v)}
-                title="Click to enlarge"
-              >
-                <StreamVideo stream={v.stream} muted />
-                <span style={nameTag}>
-                  {memberName(userId)}
-                  {v.source === 'camera' ? ' — Camera' : ' — Stream'}
-                </span>
-              </div>
+              />
             );
           })}
         </div>
@@ -325,6 +349,87 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
           <span />
         </PopOut>
       )}
+    </div>
+  );
+}
+
+function StreamTile({
+  stream,
+  label,
+  tileBase,
+  nameTag,
+  onClick,
+  onContextMenu,
+}: {
+  stream: MediaStream;
+  label: string;
+  tileBase: React.CSSProperties;
+  nameTag: React.CSSProperties;
+  onClick: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div
+      ref={ref}
+      style={{ ...tileBase, cursor: 'pointer', aspectRatio: '16/9' }}
+      onClick={onClick}
+      onContextMenu={onContextMenu}
+      title="Click to enlarge"
+      className="shu-stream-tile"
+    >
+      <StreamVideo stream={stream} />
+      <span style={nameTag}>{label}</span>
+      <button
+        type="button"
+        title="Fullscreen"
+        onClick={(e) => {
+          e.stopPropagation();
+          requestTileFullscreen(ref.current);
+        }}
+        style={{ ...cornerBtn, position: 'absolute', top: 8, right: 8, fontSize: 13, lineHeight: 1 }}
+      >
+        ⤢
+      </button>
+    </div>
+  );
+}
+
+function SpotlightTile({
+  stream,
+  label,
+  nameTag,
+  onCollapse,
+  onContextMenu,
+}: {
+  stream: MediaStream;
+  label: string;
+  nameTag: React.CSSProperties;
+  onCollapse: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  return (
+    <div
+      ref={ref}
+      style={{ position: 'relative', flex: 1, minHeight: 0, cursor: 'pointer' }}
+      onClick={onCollapse}
+      onContextMenu={onContextMenu}
+      title="Click to return to grid"
+    >
+      <StreamVideo stream={stream} />
+      <span style={nameTag}>{label}</span>
+      <button
+        type="button"
+        title="Fullscreen"
+        onClick={(e) => {
+          e.stopPropagation();
+          requestTileFullscreen(ref.current);
+        }}
+        style={{ ...cornerBtn, position: 'absolute', top: 12, right: 12, padding: 6, fontSize: 16, lineHeight: 1 }}
+      >
+        ⤢
+      </button>
     </div>
   );
 }

@@ -13,6 +13,8 @@ import {
   Spinner,
   Text,
   toRem,
+  Tooltip,
+  TooltipProvider,
 } from 'folds';
 import FocusTrap from 'focus-trap-react';
 import { SequenceCard } from '../../components/sequence-card';
@@ -106,6 +108,30 @@ export function CallControls({ callEmbed }: CallControlsProps) {
               enabled={screenshare}
               onToggle={() => callEmbed.control.toggleScreenshare()}
             />
+            {screenshare && callEmbed.control.multiShareReady && (
+              <TooltipProvider
+                position="Top"
+                tooltip={
+                  <Tooltip>
+                    <Text size="T200">Share another screen</Text>
+                  </Tooltip>
+                }
+              >
+                {(anchorRef) => (
+                  <IconButton
+                    ref={anchorRef}
+                    variant="Surface"
+                    fill="Soft"
+                    radii="400"
+                    size="400"
+                    outlined
+                    onClick={() => callEmbed.control.shareAnotherScreen()}
+                  >
+                    <Icon size="300" src={Icons.Plus} />
+                  </IconButton>
+                )}
+              </TooltipProvider>
+            )}
           </Box>
         </Box>
         {!compact && <ControlDivider />}

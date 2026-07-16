@@ -324,6 +324,18 @@
      every participant and every video publication (camera + all screen
      shares), with live MediaStreams the parent can attach directly.
      'shu-grid-update' fires on any roster/track change. */
+  // Cache one MediaStream object per track sid so repeated grid snapshots hand
+  // back the SAME object — otherwise the parent's <video> re-attaches every
+  // poll and the stream flickers (~every 2s locally; not sent to viewers).
+  var streamCache = {};
+  function streamFor(sid, track) {
+    var c = streamCache[sid];
+    if (c && c.track === track) return c.stream;
+    var s = new MediaStream([track]);
+    streamCache[sid] = { track: track, stream: s };
+    return s;
+  }
+
   function pubEntries(participant) {
     var vids = [];
     try {
@@ -334,7 +346,7 @@
         vids.push({
           sid: pub.trackSid,
           source: pub.source, // 'camera' | 'screen_share'
-          stream: new MediaStream([t]),
+          stream: streamFor(pub.trackSid, t),
         });
       });
     } catch (e) {

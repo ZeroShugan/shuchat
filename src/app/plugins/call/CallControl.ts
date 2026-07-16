@@ -375,6 +375,30 @@ export class CallControl extends EventEmitter implements CallControlState {
     if (this.screenshare) this.screenshareButton?.click();
   }
 
+  /** Whether extra simultaneous shares are available (LiveKit room exposed). */
+  public get multiShareReady(): boolean {
+    try {
+      return !!(this.iframe.contentWindow as any)?.__shuShareAnother;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /** Add ANOTHER screen/window as a separate stream (the "+" button / menu).
+   * If no primary share is running yet, start that first; otherwise publish an
+   * extra LiveKit track. */
+  public shareAnotherScreen() {
+    if (!this.screenshare) {
+      this.screenshareButton?.click();
+      return;
+    }
+    try {
+      (this.iframe.contentWindow as any)?.__shuShareAnother?.();
+    } catch (e) {
+      /* best-effort */
+    }
+  }
+
   /**
    * Stop the current share and immediately start a new one (source picker
    * reopens, where the user can tick "Share audio"). The audio choice can only
