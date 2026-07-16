@@ -234,6 +234,30 @@ ipcMain.on('popout:focus-main', () => {
     win.focus();
   }
 });
+// Size the pop-out to the stream's aspect (renderer resizeTo only worked
+// horizontally); also lock the ratio for manual resizes, footer excluded.
+ipcMain.on('popout:fit', (e, vw, vh) => {
+  const w = BrowserWindow.fromWebContents(e.sender);
+  if (!w || w === win || w.isDestroyed() || !vw || !vh) return;
+  const FOOTER = 45;
+  try {
+    const { screen } = require('electron');
+    const area = screen.getDisplayMatching(w.getBounds()).workAreaSize;
+    const maxW = Math.floor(area.width * 0.9);
+    const maxH = Math.floor(area.height * 0.9) - FOOTER;
+    let cw = Math.min(Math.max(480, w.getContentSize()[0]), maxW);
+    let ch = Math.round((cw * vh) / vw);
+    if (ch > maxH) {
+      ch = maxH;
+      cw = Math.round((ch * vw) / vh);
+    }
+    w.setContentSize(cw, ch + FOOTER);
+    w.setAspectRatio(vw / vh, { width: 0, height: FOOTER });
+    logMain(`popout fit ${vw}x${vh} -> content ${cw}x${ch + FOOTER}`);
+  } catch (err) {
+    logMain(`popout fit failed: ${err && err.message ? err.message : err}`);
+  }
+});
 
 function pickScreenShareSource(parent) {
   return new Promise((resolve) => {

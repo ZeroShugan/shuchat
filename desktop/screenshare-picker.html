@@ -24,10 +24,15 @@
   .label { display: flex; align-items: center; gap: 6px; padding: 7px 9px; font-size: .76rem; }
   .label img { width: 16px; height: 16px; border-radius: 3px; }
   .label .nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .audlbl { display: flex; align-items: center; gap: 4px; font-size: .68rem; color: #9aa0ad;
-            cursor: pointer; flex-shrink: 0; }
-  .audlbl input { margin: 0; }
-  .src.sel .audlbl { color: #cdd0d6; }
+  .thumbwrap { position: relative; }
+  /* Per-source audio badge — overlaid on the thumbnail so it is ALWAYS visible */
+  .audbadge { position: absolute; top: 6px; right: 6px; display: flex; align-items: center; gap: 4px;
+              padding: 3px 9px; border-radius: 999px; font-size: .72rem; font-weight: 600;
+              background: rgba(0,0,0,0.72); border: 1px solid rgba(255,255,255,0.25);
+              color: #9aa0ad; cursor: pointer; user-select: none; z-index: 2; }
+  .audbadge.on { color: #3ba55d; border-color: rgba(59,165,93,0.6); }
+  .audbadge.off { color: #ed4245; border-color: rgba(237,66,69,0.5); }
+  .audbadge.dim { opacity: .55; }
   footer { position: fixed; bottom: 0; left: 0; right: 0; background: #202225; border-top: 1px solid #34363c;
            display: flex; align-items: center; gap: 16px; padding: 12px 18px; }
   .aud { display: flex; align-items: center; gap: 7px; font-size: .82rem; color: #cdd0d6; cursor: pointer; }
@@ -89,28 +94,31 @@
         render();
         syncShareButton();
       };
+      const wrap = document.createElement('div');
+      wrap.className = 'thumbwrap';
       const img = document.createElement('img');
       img.className = 'thumb'; img.src = s.thumbnail;
+      wrap.appendChild(img);
+      // Per-source audio badge, overlaid on the thumbnail — ALWAYS visible.
+      const audioOn = on ? selected.get(s.id).audio : true;
+      const badge = document.createElement('div');
+      badge.className = 'audbadge ' + (audioOn ? 'on' : 'off') + (on ? '' : ' dim');
+      badge.textContent = audioOn ? '🔊 Audio ON' : '🔇 Audio OFF';
+      badge.title = on
+        ? 'Click to toggle this source’s audio'
+        : 'Select this source first, then toggle its audio';
+      badge.onclick = (ev) => {
+        ev.stopPropagation();
+        if (!selected.has(s.id)) return;
+        selected.get(s.id).audio = !selected.get(s.id).audio;
+        render();
+      };
+      wrap.appendChild(badge);
       const label = document.createElement('div');
       label.className = 'label';
       if (s.appIcon) { const ic = document.createElement('img'); ic.src = s.appIcon; label.appendChild(ic); }
       const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = s.name; label.appendChild(nm);
-      // Audio toggle is ALWAYS visible (enabled once the card is selected) so
-      // users can see the per-source option exists.
-      const al = document.createElement('label');
-      al.className = 'audlbl';
-      al.style.opacity = on ? '1' : '0.45';
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = on ? selected.get(s.id).audio : true;
-      cb.disabled = !on;
-      cb.onclick = (ev) => ev.stopPropagation();
-      cb.onchange = () => { if (selected.has(s.id)) selected.get(s.id).audio = cb.checked; };
-      al.appendChild(cb);
-      al.appendChild(document.createTextNode('audio'));
-      al.title = on ? 'Include this source’s audio' : 'Select this source first';
-      label.appendChild(al);
-      card.appendChild(img); card.appendChild(label);
+      card.appendChild(wrap); card.appendChild(label);
       grid.appendChild(card);
     });
   }
