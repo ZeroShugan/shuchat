@@ -23,6 +23,7 @@ import { RoomViewHeader } from './RoomViewHeader';
 import { RoomSearchPanel } from './RoomSearchPanel';
 import { UserProfilePanel } from './UserProfilePanel';
 import { callChatAtom } from '../../state/callEmbed';
+import { mDirectAtom } from '../../state/mDirectList';
 import { CallChatView } from './CallChatView';
 
 export function Room() {
@@ -51,9 +52,15 @@ export function Room() {
 
   const callView = room.isCallRoom();
 
-  // Detect 2-person DM rooms to show profile panel
+  // Show the profile panel ONLY for real DMs (m.direct rooms). A small space
+  // room that happens to have 2 members keeps the normal member list.
   const myUserId = mx.getSafeUserId();
-  const isDM = !callView && room.getJoinedMemberCount() <= 2 && room.getJoinedMemberCount() > 0;
+  const mDirects = useAtomValue(mDirectAtom);
+  const isDM =
+    !callView &&
+    mDirects.has(room.roomId) &&
+    room.getJoinedMemberCount() <= 2 &&
+    room.getJoinedMemberCount() > 0;
   const dmOtherUserId = isDM
     ? room.getJoinedMembers().find((m) => m.userId !== myUserId)?.userId
     : undefined;

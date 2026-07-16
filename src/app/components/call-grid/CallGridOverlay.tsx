@@ -159,8 +159,20 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
 
   if (!joined || !grid || grid.length === 0) return null;
 
+  // Dedupe streams: the same capture can surface under more than one
+  // publication entry during (re)publish races — key by sid AND by the
+  // underlying track id so a stream never renders twice.
   const allVideos: { p: GridParticipant; v: GridVideo }[] = [];
-  grid.forEach((p) => p.videos.forEach((v) => allVideos.push({ p, v })));
+  const seen = new Set<string>();
+  grid.forEach((p) =>
+    p.videos.forEach((v) => {
+      const trackId = v.stream.getVideoTracks()[0]?.id ?? v.sid;
+      if (seen.has(v.sid) || seen.has(trackId)) return;
+      seen.add(v.sid);
+      seen.add(trackId);
+      allVideos.push({ p, v });
+    })
+  );
   const spotlight = spotlightSid ? allVideos.find((x) => x.v.sid === spotlightSid) : undefined;
 
   // A tile menu only makes sense with items: others → volume; own stream →
@@ -227,15 +239,14 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
             display: 'grid',
             gap: 10,
             padding: 12,
-            // min(100%, …) lets columns shrink below the ideal width on narrow
-            // panels so there is NEVER a horizontal scrollbar — tiles reflow.
-            gridTemplateColumns: `repeat(auto-fit, minmax(min(100%, ${
-              tileCount > 4 ? 200 : 300
-            }px), 1fr))`,
-            gridAutoRows: '1fr',
-            alignItems: 'stretch',
-            overflowX: 'hidden',
-            overflowY: 'auto',
+            // Discord-style packing: computed columns/rows so ALL tiles always
+            // fit the panel — cells share the space equally (no aspect-ratio
+            // forcing → no overlap, no scrollbars; videos letterbox inside).
+            gridTemplateColumns: `repeat(${Math.ceil(Math.sqrt(tileCount))}, 1fr)`,
+            gridTemplateRows: `repeat(${Math.ceil(
+              tileCount / Math.ceil(Math.sqrt(tileCount))
+            )}, 1fr)`,
+            overflow: 'hidden',
           }}
         >
           {grid.map((p) => {
@@ -249,7 +260,6 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
                   alignItems: 'center',
                   justifyContent: 'center',
                   boxShadow: p.isSpeaking ? 'inset 0 0 0 2px #3ba55d' : undefined,
-                  aspectRatio: '16/9',
                 }}
                 onContextMenu={(e) => openTileMenu(e, userId, p.isLocal)}
               >
@@ -372,7 +382,7 @@ function StreamTile({
   return (
     <div
       ref={ref}
-      style={{ ...tileBase, cursor: 'pointer', aspectRatio: '16/9' }}
+      style={{ ...tileBase, cursor: 'pointer' }}
       onClick={onClick}
       onContextMenu={onContextMenu}
       title="Click to enlarge"

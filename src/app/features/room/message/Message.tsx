@@ -71,6 +71,7 @@ import { ReactionViewer } from '../reaction-viewer';
 import { MessageEditor } from './MessageEditor';
 import { UserAvatar } from '../../../components/user-avatar';
 import { copyToClipboard } from '../../../utils/dom';
+import { useMarkedMessages, useToggleMarkedMessage } from '../../../hooks/useMarkedMessages';
 import { stopPropagation } from '../../../utils/keyboard';
 import { getMatrixToRoomEvent } from '../../../plugins/matrix-to';
 import { getViaServers } from '../../../plugins/via-servers';
@@ -345,6 +346,72 @@ export const MessageCopyLinkItem = as<
     >
       <Text className={css.MessageMenuItemText} as="span" size="T300" truncate>
         Copy Link
+      </Text>
+    </MenuItem>
+  );
+});
+
+export const MessageCopyTextItem = as<
+  'button',
+  {
+    mEvent: MatrixEvent;
+    onClose?: () => void;
+  }
+>(({ mEvent, onClose, ...props }, ref) => {
+  const handleCopy = () => {
+    // Plain text of the message (edited events carry the new body).
+    const content = mEvent.getContent();
+    const body = content['m.new_content']?.body ?? content.body ?? '';
+    if (body) copyToClipboard(body);
+    onClose?.();
+  };
+
+  return (
+    <MenuItem
+      size="300"
+      after={<Icon size="100" src={Icons.Text} />}
+      radii="300"
+      onClick={handleCopy}
+      {...props}
+      ref={ref}
+    >
+      <Text className={css.MessageMenuItemText} as="span" size="T300" truncate>
+        Copy Message
+      </Text>
+    </MenuItem>
+  );
+});
+
+export const MessageMarkItem = as<
+  'button',
+  {
+    room: Room;
+    mEvent: MatrixEvent;
+    onClose?: () => void;
+  }
+>(({ room, mEvent, onClose, ...props }, ref) => {
+  const mx = useMatrixClient();
+  const marked = useMarkedMessages(room);
+  const toggleMarked = useToggleMarkedMessage(mx, room);
+  const eventId = mEvent.getId();
+  const isMarked = !!eventId && marked.has(eventId);
+
+  const handleMark = () => {
+    if (eventId) toggleMarked(eventId).catch(() => {});
+    onClose?.();
+  };
+
+  return (
+    <MenuItem
+      size="300"
+      after={<Icon size="100" src={Icons.Bookmark} filled={isMarked} />}
+      radii="300"
+      onClick={handleMark}
+      {...props}
+      ref={ref}
+    >
+      <Text className={css.MessageMenuItemText} as="span" size="T300" truncate>
+        {isMarked ? 'Unmark' : 'Mark'}
       </Text>
     </MenuItem>
   );
@@ -723,6 +790,7 @@ export const Message = as<'div', MessageProps>(
     const useAuthentication = useMediaAuthentication();
     const senderId = mEvent.getSender() ?? '';
     const trustColour = useEventTrust(mx, mEvent);
+    const markedMessages = useMarkedMessages(room);
 
     const [hover, setHover] = useState(false);
     const { hoverProps } = useHover({ onHoverChange: setHover });
@@ -887,10 +955,22 @@ export const Message = as<'div', MessageProps>(
     // Only RED (untrusted device) gets a border. GREY just means the keys came
     // from key backup on a new session (authenticity unknown) — showing it as an
     // orange bar confused users into thinking messages were unread.
+    // Marked messages (owner's todo bookmarks, synced via room account data
+    // across all their devices): amber tint + left bar. The RED encryption
+    // trust bar keeps priority on the border when both apply.
+    const isMarked = !!mEvent.getId() && markedMessages.has(mEvent.getId()!);
+    const markedStyle: React.CSSProperties | undefined = isMarked
+      ? {
+          background: 'rgba(250, 166, 26, 0.07)',
+          borderLeft: '3px solid rgba(250, 166, 26, 0.65)',
+          paddingLeft: 6,
+          borderRadius: 4,
+        }
+      : undefined;
     const containerStyle: React.CSSProperties | undefined =
       trustColour === EventShieldColour.RED
-        ? { borderLeft: '3px solid rgba(248,113,113,0.6)', paddingLeft: 6 }
-        : undefined;
+        ? { ...markedStyle, borderLeft: '3px solid rgba(248,113,113,0.6)', paddingLeft: 6 }
+        : markedStyle;
 
     return (
       <MessageBase
@@ -1109,6 +1189,8 @@ export const Message = as<'div', MessageProps>(
                             />
                           )}
                           <MessageCopyLinkItem room={room} mEvent={mEvent} onClose={closeMenu} />
+                          <MessageCopyTextItem mEvent={mEvent} onClose={closeMenu} />
+                          <MessageMarkItem room={room} mEvent={mEvent} onClose={closeMenu} />
                           {canPinEvent && (
                             <MessagePinItem room={room} mEvent={mEvent} onClose={closeMenu} />
                           )}
@@ -1278,6 +1360,8 @@ export const Event = as<'div', EventProps>(
                             />
                           )}
                           <MessageCopyLinkItem room={room} mEvent={mEvent} onClose={closeMenu} />
+                          <MessageCopyTextItem mEvent={mEvent} onClose={closeMenu} />
+                          <MessageMarkItem room={room} mEvent={mEvent} onClose={closeMenu} />
                         </Box>
                         {((!mEvent.isRedacted() && canDelete && !stateEvent) ||
                           (mEvent.getSender() !== mx.getUserId() && !stateEvent)) && (
