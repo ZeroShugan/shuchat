@@ -134,13 +134,17 @@ const useDropTarget = (
   return state;
 };
 
-/** Thin insert line rendered under a room row while a drag is active. */
-type RoomDropLineProps = {
+/**
+ * Full-row drop cover shown while another row is being dragged. The previous
+ * design used a 4px insert line that was nearly impossible to hit, so drops
+ * silently failed; covering the whole row makes "drop after this room" reliable.
+ */
+type RoomDropCoverProps = {
   catId: string;
   afterRoomId: string;
   canDrop: CanDropOnCategory;
 };
-export function RoomDropLine({ catId, afterRoomId, canDrop }: RoomDropLineProps) {
+function RoomDropCover({ catId, afterRoomId, canDrop }: RoomDropCoverProps) {
   const ref = useRef<HTMLDivElement>(null);
   const state = useDropTarget(ref, { shuTarget: 'after', catId, afterRoomId }, canDrop, true);
 
@@ -149,13 +153,18 @@ export function RoomDropLine({ catId, afterRoomId, canDrop }: RoomDropLineProps)
       ref={ref}
       style={{
         position: 'absolute',
-        left: 0,
-        right: 0,
-        bottom: -4,
-        height: 8,
-        zIndex: 1,
+        inset: 0,
+        zIndex: 2,
         display: 'flex',
-        alignItems: 'center',
+        alignItems: 'flex-end',
+        borderRadius: config.radii.R400,
+        outline: state === 'allow' ? `2px solid ${color.Primary.Main}` : undefined,
+        background:
+          state === 'allow'
+            ? color.Primary.Container
+            : state === 'not-allow'
+            ? color.Critical.Container
+            : undefined,
       }}
     >
       <div
@@ -163,12 +172,7 @@ export function RoomDropLine({ catId, afterRoomId, canDrop }: RoomDropLineProps)
           width: '100%',
           height: 3,
           borderRadius: 2,
-          background:
-            state === 'allow'
-              ? color.Primary.Main
-              : state === 'not-allow'
-              ? color.Critical.Main
-              : 'transparent',
+          background: state === 'allow' ? color.Primary.Main : 'transparent',
         }}
       />
     </div>
@@ -248,6 +252,8 @@ export function SpaceCategoryHeader({
 
   const [addAnchor, setAddAnchor] = useState<RectCords>();
   const [menuAnchor, setMenuAnchor] = useState<RectCords>();
+  const addMenuRef = useRef<HTMLDivElement>(null);
+  const optMenuRef = useRef<HTMLDivElement>(null);
 
   const handleAddOpen: MouseEventHandler<HTMLButtonElement> = (evt) => {
     setAddAnchor(evt.currentTarget.getBoundingClientRect());
@@ -308,6 +314,9 @@ export function SpaceCategoryHeader({
             <FocusTrap
               focusTrapOptions={{
                 initialFocus: false,
+                // The menu can be empty ("No rooms to add") — without a
+                // fallback, focus-trap throws for having no tabbable node.
+                fallbackFocus: () => addMenuRef.current as HTMLElement,
                 onDeactivate: () => setAddAnchor(undefined),
                 clickOutsideDeactivates: true,
                 isKeyForward: (evt: KeyboardEvent) => evt.key === 'ArrowDown',
@@ -315,7 +324,7 @@ export function SpaceCategoryHeader({
                 escapeDeactivates: stopPropagation,
               }}
             >
-              <Menu style={{ maxHeight: '50vh', overflowY: 'auto' }}>
+              <Menu ref={addMenuRef} tabIndex={-1} style={{ maxHeight: '50vh', overflowY: 'auto' }}>
                 <Box direction="Column" style={{ padding: config.space.S100, minWidth: toRem(180) }}>
                   <Box style={{ padding: config.space.S100 }}>
                     <Text size="L400">Add room</Text>
@@ -359,6 +368,7 @@ export function SpaceCategoryHeader({
             <FocusTrap
               focusTrapOptions={{
                 initialFocus: false,
+                fallbackFocus: () => optMenuRef.current as HTMLElement,
                 onDeactivate: () => setMenuAnchor(undefined),
                 clickOutsideDeactivates: true,
                 isKeyForward: (evt: KeyboardEvent) => evt.key === 'ArrowDown',
@@ -366,7 +376,7 @@ export function SpaceCategoryHeader({
                 escapeDeactivates: stopPropagation,
               }}
             >
-              <Menu>
+              <Menu ref={optMenuRef} tabIndex={-1}>
                 <Box direction="Column" style={{ padding: config.space.S100, minWidth: toRem(140) }}>
                   <MenuItem
                     size="300"
@@ -444,7 +454,7 @@ export function DraggableRoomRow({
     <div ref={ref} style={{ position: 'relative', opacity: selfDragging ? 0.4 : 1 }}>
       {children}
       {draggingActive && !selfDragging && (
-        <RoomDropLine catId={catId} afterRoomId={roomId} canDrop={canDrop} />
+        <RoomDropCover catId={catId} afterRoomId={roomId} canDrop={canDrop} />
       )}
     </div>
   );
