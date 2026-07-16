@@ -28,6 +28,8 @@ import {
   VideoButton,
 } from './Controls';
 import { CallEmbed, useCallControlState } from '../../plugins/call';
+import { Settings, SettingsPages } from '../settings';
+import { Modal500 } from '../../components/Modal500';
 import { useVoiceControls } from '../../hooks/useVoiceControls';
 import { useSetting } from '../../state/hooks/settings';
 import { settingsAtom } from '../../state/settings';
@@ -51,7 +53,7 @@ export function CallControls({ callEmbed }: CallControlsProps) {
     useCallback(() => controlRef.current, [])
   );
 
-  const { video, screenshare, spotlight } = useCallControlState(callEmbed.control);
+  const { video, screenshare } = useCallControlState(callEmbed.control);
   // Mic/sound go through the unified hook so ALL mute/deafen buttons stay in
   // sync and play the feedback tones.
   const { microphone, sound, toggleMicrophone, toggleSound } = useVoiceControls();
@@ -96,19 +98,12 @@ export function CallControls({ callEmbed }: CallControlsProps) {
     setCords(evt.currentTarget.getBoundingClientRect());
   };
 
-  const handleSpotlightClick = () => {
-    callEmbed.control.toggleSpotlight();
-    setCords(undefined);
-  };
-
-  const handleReactionsClick = () => {
-    callEmbed.control.toggleReactions();
-    setCords(undefined);
-  };
-
+  // Element Call's own dialogs are hidden under the ShuChat stream grid, so
+  // the menu opens ShuChat's settings (Voice & Video) instead.
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const handleSettingsClick = () => {
-    callEmbed.control.toggleSettings();
     setCords(undefined);
+    setSettingsOpen(true);
   };
 
   const [hangupState, hangup] = useAsyncCallback(
@@ -245,30 +240,10 @@ export function CallControls({ callEmbed }: CallControlsProps) {
                         size="300"
                         variant="Surface"
                         radii="300"
-                        onClick={handleSpotlightClick}
-                      >
-                        <Text size="B300" truncate>
-                          {spotlight ? 'Grid View' : 'Spotlight View'}
-                        </Text>
-                      </MenuItem>
-                      <MenuItem
-                        size="300"
-                        variant="Surface"
-                        radii="300"
-                        onClick={handleReactionsClick}
-                      >
-                        <Text size="B300" truncate>
-                          Reactions
-                        </Text>
-                      </MenuItem>
-                      <MenuItem
-                        size="300"
-                        variant="Surface"
-                        radii="300"
                         onClick={handleSettingsClick}
                       >
                         <Text size="B300" truncate>
-                          Settings
+                          Voice &amp; Video Settings
                         </Text>
                       </MenuItem>
                     </Box>
@@ -309,6 +284,14 @@ export function CallControls({ callEmbed }: CallControlsProps) {
           </Box>
         </Box>
       </SequenceCard>
+      {settingsOpen && (
+        <Modal500 requestClose={() => setSettingsOpen(false)}>
+          <Settings
+            initialPage={SettingsPages.VoiceVideoPage}
+            requestClose={() => setSettingsOpen(false)}
+          />
+        </Modal500>
+      )}
     </Box>
   );
 }

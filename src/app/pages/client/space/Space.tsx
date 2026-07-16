@@ -40,7 +40,7 @@ import {
   NavLink,
 } from '../../../components/nav';
 import { getSpaceLobbyPath, getSpaceRoomPath, getSpaceSearchPath, getHomePath, getHomeRoomPath } from '../../pathUtils';
-import { getCanonicalAliasOrRoomId, isRoomAlias } from '../../../utils/matrix';
+import { getCanonicalAliasOrRoomId, isRoomAlias, rateLimitedActions } from '../../../utils/matrix';
 import { useSelectedRoom } from '../../../hooks/router/useSelectedRoom';
 import {
   useSpaceLobbySelected,
@@ -54,7 +54,24 @@ import { roomToUnreadAtom } from '../../../state/room/roomToUnread';
 import { useCategoryHandler } from '../../../hooks/useCategoryHandler';
 import { useNavToActivePathMapper } from '../../../hooks/useNavToActivePathMapper';
 import { useRoomName } from '../../../hooks/useRoomMeta';
-import { useSpaceJoinedHierarchy } from '../../../hooks/useSpaceHierarchy';
+import { HierarchyItem, useSpaceJoinedHierarchy } from '../../../hooks/useSpaceHierarchy';
+import {
+  AUTO_CHAT_CATEGORY,
+  AUTO_VOICE_CATEGORY,
+  SPACE_CATEGORIES_STATE,
+  SpaceCategory,
+  useSpaceCategories,
+  useSpaceCategoryActions,
+} from '../../../hooks/useSpaceCategories';
+import {
+  CategoryDragData,
+  CategoryDropData,
+  DraggableRoomRow,
+  NewCategoryDropZone,
+  SpaceCategoryHeader,
+  useCategoryDropMonitor,
+} from '../../../components/space-categories/SpaceCategoriesUI';
+import { ASCIILexicalTable, orderKeys } from '../../../utils/ASCIILexicalTable';
 import { allRoomsAtom } from '../../../state/room-list/roomList';
 import { PageNav, PageNavContent, PageNavHeader } from '../../../components/page';
 import { UserPanel } from '../../../components/user-panel/UserPanel';
@@ -90,6 +107,13 @@ import { BreakWord } from '../../../styles/Text.css';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
 import { useCallEmbed } from '../../../hooks/useCallEmbed';
 import { AddToFolderPrompt } from '../../../components/add-to-folder-prompt/AddToFolderPrompt';
+
+// One row of the space's left-nav list: a sub-space header, a category
+// header (custom or automatic CHAT/VOICE bucket), or a room.
+type SpaceListEntry =
+  | { kind: 'space'; item: HierarchyItem }
+  | { kind: 'category'; catId: string; name: string; custom?: SpaceCategory; auto?: 'chat' | 'voice' }
+  | { kind: 'room'; item: HierarchyItem; catId: string };
 
 type SpaceMenuProps = {
   room: Room;
@@ -501,6 +525,23 @@ export function Space() {
 
   const [closedCategories, setClosedCategories] = useAtom(useClosedNavCategoriesAtom());
 
+  // ---- Space categories (custom + automatic CHAT/VOICE buckets) ----
+  const spacePowerLevels = usePowerLevels(space);
+  const spaceCreators = useRoomCreators(space);
+  const spacePermissions = useRoomPermissions(spaceCreators, spacePowerLevels);
+  const canManageCategories = spacePermissions.stateEvent(
+    SPACE_CATEGORIES_STATE,
+    mx.getSafeUserId()
+  );
+  const canReorderChildren = spacePermissions.stateEvent(
+    StateEvent.SpaceChild,
+    mx.getSafeUserId()
+  );
+  const categories = useSpaceCategories(space);
+  const catActions = useSpaceCategoryActions(space, categories);
+  const lex = useMemo(() => new ASCIILexicalTable(' '.charCodeAt(0), '~'.charCodeAt(0), 6), []);
+  const [draggingRoom, setDraggingRoom] = useState<CategoryDragData | undefined>();
+
   const getRoom = useCallback(
     (rId: string): Room | undefined => {
       if (allJoinedRooms.has(rId)) {
@@ -516,6 +557,9 @@ export function Space() {
     getRoom,
     useCallback(
       (parentId, roomId) => {
+        // Root-space children are grouped into categories below — collapsing
+        // is handled per category there, never at the hierarchy level.
+        if (parentId === space.roomId) return false;
         if (!closedCategories.has(makeNavCategoryId(space.roomId, parentId))) {
           return false;
         }
@@ -531,8 +575,228 @@ export function Space() {
     )
   );
 
+  // Build the flat render list: custom categories first (state-event order),
+  // then the automatic CHAT ROOMS / VOICE ROOMS buckets, then sub-space
+  // sections unchanged.
+  const { entries, catOf, rootRooms } = useMemo(() => {
+    const rootItems: HierarchyItem[] = [];
+    const rest: HierarchyItem[] = [];
+    hierarchy.forEach((item) => {
+      if ('space' in item && item.roomId === space.roomId) return; // drop the old "Rooms" header
+      if (!('space' in item) && item.parentId === space.roomId) rootItems.push(item);
+      else rest.push(item);
+    });
+
+    // first category listing a room wins (guards against corrupt duplicates)
+    const catMap = new Map<string, string>();
+    categories.forEach((c) =>
+      c.rooms.forEach((rId) => {
+        if (!catMap.has(rId)) catMap.set(rId, c.id);
+      })
+    );
+
+    const out: SpaceListEntry[] = [];
+    const pushCategory = (
+      catId: string,
+      name: string,
+      rooms: HierarchyItem[],
+      custom?: SpaceCategory,
+      auto?: 'chat' | 'voice'
+    ) => {
+      out.push({ kind: 'category', catId, name, custom, auto });
+      const closed = closedCategories.has(makeNavCategoryId(space.roomId, catId));
+      rooms.forEach((item) => {
+        if (closed) {
+          const showAnyway =
+            roomToUnread.has(item.roomId) ||
+            item.roomId === selectedRoomId ||
+            callEmbed?.roomId === item.roomId;
+          if (!showAnyway) return;
+        }
+        out.push({ kind: 'room', item, catId });
+      });
+    };
+
+    categories.forEach((cat) => {
+      const catRooms = cat.rooms
+        .filter((rId) => catMap.get(rId) === cat.id)
+        .map((rId) => rootItems.find((i) => i.roomId === rId))
+        .filter((i): i is HierarchyItem => !!i);
+      pushCategory(cat.id, cat.name, catRooms, cat);
+    });
+
+    const leftovers = rootItems.filter((i) => !catMap.has(i.roomId));
+    const chatRooms = leftovers.filter((i) => !getRoom(i.roomId)?.isCallRoom());
+    const voiceRooms = leftovers.filter((i) => !!getRoom(i.roomId)?.isCallRoom());
+    // While dragging, show empty buckets too so a room can be dragged back out
+    // of a custom category.
+    const showEmpty = !!draggingRoom && canManageCategories;
+    if (chatRooms.length > 0 || showEmpty) {
+      pushCategory(AUTO_CHAT_CATEGORY, 'CHAT ROOMS', chatRooms, undefined, 'chat');
+    }
+    if (voiceRooms.length > 0 || showEmpty) {
+      pushCategory(AUTO_VOICE_CATEGORY, 'VOICE ROOMS', voiceRooms, undefined, 'voice');
+    }
+
+    rest.forEach((item) => {
+      if ('space' in item) out.push({ kind: 'space', item });
+      else out.push({ kind: 'room', item, catId: `sub|${item.parentId}` });
+    });
+
+    return { entries: out, catOf: catMap, rootRooms: rootItems };
+  }, [
+    hierarchy,
+    categories,
+    closedCategories,
+    space.roomId,
+    roomToUnread,
+    selectedRoomId,
+    callEmbed,
+    getRoom,
+    draggingRoom,
+    canManageCategories,
+  ]);
+
+  const canDropOnCategory = useCallback(
+    (drag: CategoryDragData, drop: CategoryDropData): boolean => {
+      if (drop.shuTarget === 'new-cat') return canManageCategories;
+      const targetCat = drop.catId;
+      const isAuto = targetCat === AUTO_CHAT_CATEGORY || targetCat === AUTO_VOICE_CATEGORY;
+      if (!isAuto) return canManageCategories;
+      const room = getRoom(drag.roomId);
+      const isVoice = !!room?.isCallRoom();
+      // room type must match its automatic bucket
+      if (targetCat === AUTO_CHAT_CATEGORY && isVoice) return false;
+      if (targetCat === AUTO_VOICE_CATEGORY && !isVoice) return false;
+      if (catOf.has(drag.roomId)) return canManageCategories;
+      return canReorderChildren;
+    },
+    [canManageCategories, canReorderChildren, catOf, getRoom]
+  );
+
+  // Reorder a direct child of the space by rewriting m.space.child `order`
+  // keys (native Matrix ordering — other clients see the same order).
+  const reorderRootChild = useCallback(
+    async (roomId: string, afterRoomId: string | undefined) => {
+      const moving = rootRooms.find((i) => i.roomId === roomId);
+      if (!moving) return;
+      const items = rootRooms.filter((i) => i.roomId !== roomId);
+      const afterIndex = afterRoomId ? items.findIndex((i) => i.roomId === afterRoomId) : -1;
+      items.splice(afterIndex + 1, 0, {
+        ...moving,
+        content: { ...moving.content, order: undefined },
+      });
+      const currentOrders = items.map((i) =>
+        typeof i.content.order === 'string' && lex.has(i.content.order)
+          ? i.content.order
+          : undefined
+      );
+      const newOrders = orderKeys(lex, currentOrders);
+      if (!newOrders) return;
+      const reorders = newOrders
+        .map((orderKey, index) => ({ item: items[index], orderKey }))
+        .filter((r, index) => r.item && r.orderKey !== currentOrders[index]);
+      await rateLimitedActions(reorders, async (r) => {
+        await mx.sendStateEvent(
+          space.roomId,
+          StateEvent.SpaceChild as any,
+          { ...r.item.content, order: r.orderKey },
+          r.item.roomId
+        );
+      });
+    },
+    [rootRooms, lex, mx, space.roomId]
+  );
+
+  const handleCategoryDrop = useCallback(
+    async (drag: CategoryDragData, drop: CategoryDropData) => {
+      try {
+        if (!canDropOnCategory(drag, drop)) return;
+        if (drop.shuTarget === 'new-cat') {
+          await catActions.createWithRoom(drag.roomId);
+          return;
+        }
+        const targetCat = drop.catId;
+        const isAuto = targetCat === AUTO_CHAT_CATEGORY || targetCat === AUTO_VOICE_CATEGORY;
+        if (!isAuto) {
+          await catActions.moveRoom(
+            drag.roomId,
+            targetCat,
+            drop.shuTarget === 'after' ? drop.afterRoomId : undefined
+          );
+          return;
+        }
+        // back to an automatic bucket: leave the custom category (if any)…
+        if (catOf.has(drag.roomId)) await catActions.moveRoom(drag.roomId, undefined);
+        // …then place it within the bucket via m.space.child order
+        if (!canReorderChildren) return;
+        let afterRoomId = drop.shuTarget === 'after' ? drop.afterRoomId : undefined;
+        if (drop.shuTarget === 'cat') {
+          const wantVoice = targetCat === AUTO_VOICE_CATEGORY;
+          const bucket = rootRooms.filter(
+            (i) =>
+              i.roomId !== drag.roomId &&
+              !catOf.has(i.roomId) &&
+              !!getRoom(i.roomId)?.isCallRoom() === wantVoice
+          );
+          afterRoomId = bucket[bucket.length - 1]?.roomId;
+          if (!afterRoomId) return; // empty bucket — membership change was enough
+        }
+        await reorderRootChild(drag.roomId, afterRoomId);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.warn('shuchat: category drop failed', e);
+      }
+    },
+    [canDropOnCategory, catActions, catOf, canReorderChildren, rootRooms, getRoom, reorderRootChild]
+  );
+
+  useCategoryDropMonitor(scrollRef, setDraggingRoom, handleCategoryDrop);
+
+  const handleRenameCategory = useCallback(
+    (cat: SpaceCategory) => {
+      // eslint-disable-next-line no-alert
+      const name = window.prompt('Rename category', cat.name);
+      if (name && name.trim()) catActions.rename(cat.id, name);
+    },
+    [catActions]
+  );
+  const handleDeleteCategory = useCallback(
+    (cat: SpaceCategory) => {
+      // eslint-disable-next-line no-alert
+      if (
+        window.confirm(
+          `Delete category "${cat.name}"? Its rooms go back to the automatic CHAT/VOICE sections.`
+        )
+      ) {
+        catActions.remove(cat.id);
+      }
+    },
+    [catActions]
+  );
+
+  // Rooms offered in a category header's "+" menu.
+  const getAddCandidates = useCallback(
+    (entry: Extract<SpaceListEntry, { kind: 'category' }>) => {
+      let items: HierarchyItem[];
+      if (entry.custom) {
+        items = rootRooms.filter((i) => catOf.get(i.roomId) !== entry.catId);
+      } else {
+        const wantVoice = entry.catId === AUTO_VOICE_CATEGORY;
+        items = rootRooms.filter(
+          (i) => catOf.has(i.roomId) && !!getRoom(i.roomId)?.isCallRoom() === wantVoice
+        );
+      }
+      return items.map((i) => ({
+        roomId: i.roomId,
+        name: mx.getRoom(i.roomId)?.name ?? i.roomId,
+      }));
+    },
+    [rootRooms, catOf, getRoom, mx]
+  );
+
   const virtualizer = useVirtualizer({
-    count: hierarchy.length,
+    count: entries.length,
     getScrollElement: () => scrollRef.current,
     estimateSize: () => 0,
     overscan: 10,
@@ -598,11 +862,12 @@ export function Space() {
             }}
           >
             {virtualizer.getVirtualItems().map((vItem) => {
-              const { roomId } = hierarchy[vItem.index] ?? {};
-              const room = mx.getRoom(roomId);
-              if (!room) return null;
+              const entry = entries[vItem.index];
+              if (!entry) return null;
 
-              if (room.isSpaceRoom()) {
+              if (entry.kind === 'space') {
+                const { roomId } = entry.item;
+                const room = mx.getRoom(roomId);
                 const categoryId = makeNavCategoryId(space.roomId, roomId);
 
                 return (
@@ -618,7 +883,7 @@ export function Space() {
                           onClick={handleCategoryClick}
                           closed={closedCategories.has(categoryId)}
                         >
-                          {roomId === space.roomId ? 'Rooms' : room?.name}
+                          {room?.name}
                         </RoomNavCategoryButton>
                       </NavCategoryHeader>
                     </div>
@@ -626,20 +891,82 @@ export function Space() {
                 );
               }
 
+              if (entry.kind === 'category') {
+                const navId = makeNavCategoryId(space.roomId, entry.catId);
+                return (
+                  <VirtualTile
+                    virtualItem={vItem}
+                    key={vItem.index}
+                    ref={virtualizer.measureElement}
+                  >
+                    <div style={{ paddingTop: vItem.index === 0 ? undefined : config.space.S400 }}>
+                      <SpaceCategoryHeader
+                        navCategoryId={navId}
+                        name={entry.name}
+                        closed={closedCategories.has(navId)}
+                        onToggle={handleCategoryClick}
+                        canManage={canManageCategories}
+                        custom={!!entry.custom}
+                        addCandidates={getAddCandidates(entry)}
+                        onAdd={(rId) =>
+                          entry.custom
+                            ? catActions.moveRoom(rId, entry.catId)
+                            : catActions.moveRoom(rId, undefined)
+                        }
+                        onRename={
+                          entry.custom ? () => handleRenameCategory(entry.custom!) : undefined
+                        }
+                        onDelete={
+                          entry.custom ? () => handleDeleteCategory(entry.custom!) : undefined
+                        }
+                        dndCatId={entry.catId}
+                        canDrop={canDropOnCategory}
+                      />
+                    </div>
+                  </VirtualTile>
+                );
+              }
+
+              const { item, catId } = entry;
+              const { roomId } = item;
+              const room = mx.getRoom(roomId);
+              if (!room) return null;
+              const isRootRoom = !('space' in item) && item.parentId === space.roomId;
+
+              const navItem = (
+                <RoomNavItem
+                  room={room}
+                  selected={selectedRoomId === roomId}
+                  showAvatar={mDirects.has(roomId)}
+                  direct={mDirects.has(roomId)}
+                  linkPath={getToLink(roomId)}
+                  notificationMode={getRoomNotificationMode(notificationPreferences, room.roomId)}
+                />
+              );
+
               return (
                 <VirtualTile virtualItem={vItem} key={vItem.index} ref={virtualizer.measureElement}>
-                  <RoomNavItem
-                    room={room}
-                    selected={selectedRoomId === roomId}
-                    showAvatar={mDirects.has(roomId)}
-                    direct={mDirects.has(roomId)}
-                    linkPath={getToLink(roomId)}
-                    notificationMode={getRoomNotificationMode(notificationPreferences, room.roomId)}
-                  />
+                  {isRootRoom && (canManageCategories || canReorderChildren) ? (
+                    <DraggableRoomRow
+                      roomId={roomId}
+                      catId={catId}
+                      canDrag
+                      draggingActive={!!draggingRoom}
+                      canDrop={canDropOnCategory}
+                      onDragging={setDraggingRoom}
+                    >
+                      {navItem}
+                    </DraggableRoomRow>
+                  ) : (
+                    navItem
+                  )}
                 </VirtualTile>
               );
             })}
           </NavCategory>
+          {draggingRoom && canManageCategories && (
+            <NewCategoryDropZone canDrop={canDropOnCategory} />
+          )}
         </Box>
       </PageNavContent>
       <VoiceStatusBar />
