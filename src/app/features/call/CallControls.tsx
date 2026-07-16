@@ -68,8 +68,11 @@ export function CallControls({ callEmbed }: CallControlsProps) {
     }
     try {
       const list = await navigator.mediaDevices.enumerateDevices();
-      const found = list.filter((d) => d.kind === 'videoinput' && d.label !== '');
-      if (found.length > 1) {
+      const found = list.filter((d) => d.kind === 'videoinput');
+      // Always show the menu (even with a single camera) so the user gets a
+      // confirmation step with Cancel before the camera turns on. Clicking
+      // outside the menu = cancel.
+      if (found.length >= 1) {
         setCams(found);
         const btn = document.querySelector('[data-shu-video-btn]');
         setCamCords(btn ? btn.getBoundingClientRect() : undefined);
@@ -157,19 +160,29 @@ export function CallControls({ callEmbed }: CallControlsProps) {
                       <Box style={{ padding: config.space.S100 }}>
                         <Text size="L400">Start camera with…</Text>
                       </Box>
-                      {cams.map((c) => (
+                      {cams.map((c, i) => (
                         <MenuItem
-                          key={c.deviceId}
+                          key={c.deviceId || String(i)}
                           size="300"
                           variant="Surface"
                           radii="300"
                           onClick={() => startCameraWith(c.deviceId)}
                         >
                           <Text size="B300" truncate>
-                            {c.label || 'Camera'}
+                            {c.label || `Camera ${i + 1}`}
                           </Text>
                         </MenuItem>
                       ))}
+                      <MenuItem
+                        size="300"
+                        variant="Surface"
+                        radii="300"
+                        onClick={() => setCamCords(undefined)}
+                      >
+                        <Text size="B300" truncate style={{ opacity: 0.7 }}>
+                          Cancel
+                        </Text>
+                      </MenuItem>
                     </Box>
                   </Menu>
                 </FocusTrap>

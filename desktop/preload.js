@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('shuchatDesktop', {
   // Stream pop-out window controls (used by popout.html; no-ops elsewhere).
   popoutSetAlwaysOnTop: (flag) => ipcRenderer.send('popout:set-always-on-top', !!flag),
   popoutFocusMain: () => ipcRenderer.send('popout:focus-main'),
+  popoutFit: (vw, vh) => ipcRenderer.send('popout:fit', vw, vh),
 });
 
 // Multi-select screenshare: main queued extra sources — tell the web app how
