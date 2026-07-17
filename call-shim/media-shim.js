@@ -344,6 +344,11 @@
         if (pub.kind !== 'video') return;
         var t = pub.track && pub.track.mediaStreamTrack;
         if (!t || t.readyState !== 'live') return;
+        // Cropped own stream: the grid shows what viewers see (canvas track).
+        var crop = crops[pub.trackSid];
+        if (crop && crop.canvasTrack && crop.canvasTrack.readyState === 'live') {
+          t = crop.canvasTrack;
+        }
         vids.push({
           sid: pub.trackSid,
           source: pub.source, // 'camera' | 'screen_share'
@@ -411,6 +416,162 @@
   function gridChanged() {
     window.dispatchEvent(new CustomEvent('shu-grid-update'));
   }
+
+  /* ---- Crop (region) engine -----------------------------------------------
+     Crops one of OUR outgoing video streams to a sub-rectangle: the original
+     track plays into a hidden <video>, a canvas draws only the chosen region,
+     and canvas.captureStream()'s track replaces the outgoing track on every
+     RTCRtpSender (via __rtcPCs). Live-adjustable, reversible, per-stream.
+     Rect is in SOURCE pixels: {x, y, w, h}. */
+  var crops = {}; // sid -> {origTrack, canvasTrack, video, canvas, ctx, timer, rect}
+
+  function findLocalVideoPub(sid) {
+    var room = window.__shuLKRoom;
+    if (!room || !room.localParticipant) return null;
+    var found = null;
+    try {
+      room.localParticipant.trackPublications.forEach(function (pub) {
+        if (pub.trackSid === sid && pub.kind === 'video') found = pub;
+      });
+    } catch (e) {
+      /* ignore */
+    }
+    return found;
+  }
+
+  function replaceOutgoingTrack(fromTrack, toTrack) {
+    var pcs = window.__rtcPCs || [];
+    var done = 0;
+    for (var i = 0; i < pcs.length; i += 1) {
+      try {
+        var senders = pcs[i].getSenders();
+        for (var j = 0; j < senders.length; j += 1) {
+          if (senders[j].track === fromTrack) {
+            senders[j].replaceTrack(toTrack);
+            done += 1;
+          }
+        }
+      } catch (e) {
+        /* pc may be closed */
+      }
+    }
+    return done;
+  }
+
+  function clampCropRect(rect, vw, vh) {
+    var x = Math.max(0, Math.min(vw - 16, Math.round(rect.x)));
+    var y = Math.max(0, Math.min(vh - 16, Math.round(rect.y)));
+    var w = Math.max(16, Math.min(vw - x, Math.round(rect.w)));
+    var h = Math.max(16, Math.min(vh - y, Math.round(rect.h)));
+    // even dimensions keep encoders happy
+    return { x: x, y: y, w: w - (w % 2), h: h - (h % 2) };
+  }
+
+  function drawCropFrame(c) {
+    var vw = c.video.videoWidth;
+    var vh = c.video.videoHeight;
+    if (!vw || !vh) return;
+    var r = clampCropRect(c.rect, vw, vh);
+    if (c.canvas.width !== r.w) c.canvas.width = r.w;
+    if (c.canvas.height !== r.h) c.canvas.height = r.h;
+    try {
+      c.ctx.drawImage(c.video, r.x, r.y, r.w, r.h, 0, 0, r.w, r.h);
+    } catch (e) {
+      /* video not ready */
+    }
+  }
+
+  /** Full ORIGINAL stream for a local sid (for the crop editor preview). */
+  window.__shuGetOriginal = function (sid) {
+    var c = crops[sid];
+    if (c && c.origTrack.readyState === 'live') return new MediaStream([c.origTrack]);
+    var pub = findLocalVideoPub(sid);
+    var t = pub && pub.track && pub.track.mediaStreamTrack;
+    return t && t.readyState === 'live' ? new MediaStream([t]) : null;
+  };
+
+  /** Current crop rect (source px) or null. */
+  window.__shuGetCrop = function (sid) {
+    var c = crops[sid];
+    return c ? { x: c.rect.x, y: c.rect.y, w: c.rect.w, h: c.rect.h } : null;
+  };
+
+  window.__shuSetCrop = function (sid, rect) {
+    try {
+      var existing = crops[sid];
+      if (existing) {
+        existing.rect = rect; // draw loop picks it up next frame
+        shimLog('crop updated on ' + sid + ': ' + JSON.stringify(rect));
+        return true;
+      }
+      var pub = findLocalVideoPub(sid);
+      var origTrack = pub && pub.track && pub.track.mediaStreamTrack;
+      if (!origTrack || origTrack.readyState !== 'live') {
+        shimLog('crop: no live local track for sid ' + sid);
+        return false;
+      }
+      var video = document.createElement('video');
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = new MediaStream([origTrack]);
+      video.play().catch(function () {});
+      var canvas = document.createElement('canvas');
+      canvas.width = Math.max(16, Math.round(rect.w));
+      canvas.height = Math.max(16, Math.round(rect.h));
+      var ctx = canvas.getContext('2d');
+      var fps = 30;
+      try {
+        fps = Math.round(origTrack.getSettings().frameRate) || 30;
+      } catch (e) {
+        /* default */
+      }
+      var c = { origTrack: origTrack, video: video, canvas: canvas, ctx: ctx, rect: rect, fps: fps };
+      var cs = canvas.captureStream(fps);
+      c.canvasTrack = cs.getVideoTracks()[0];
+      c.timer = setInterval(function () {
+        drawCropFrame(c);
+      }, Math.max(Math.floor(1000 / fps), 16));
+      var n = replaceOutgoingTrack(origTrack, c.canvasTrack);
+      crops[sid] = c;
+      origTrack.addEventListener('ended', function () {
+        window.__shuClearCrop(sid);
+      });
+      shimLog('crop set on ' + sid + ' ' + JSON.stringify(rect) + ' (senders replaced: ' + n + ')');
+      gridChanged();
+      return true;
+    } catch (e) {
+      shimLog('crop failed: ' + (e && e.message ? e.message : e));
+      return false;
+    }
+  };
+
+  window.__shuClearCrop = function (sid) {
+    var c = crops[sid];
+    if (!c) return;
+    delete crops[sid];
+    try {
+      clearInterval(c.timer);
+    } catch (e) {
+      /* ignore */
+    }
+    try {
+      if (c.origTrack.readyState === 'live') replaceOutgoingTrack(c.canvasTrack, c.origTrack);
+    } catch (e) {
+      /* ignore */
+    }
+    try {
+      c.canvasTrack.stop();
+    } catch (e) {
+      /* ignore */
+    }
+    try {
+      c.video.srcObject = null;
+    } catch (e) {
+      /* ignore */
+    }
+    shimLog('crop cleared on ' + sid);
+    gridChanged();
+  };
 
   function wireGridEvents(room) {
     var evs = [

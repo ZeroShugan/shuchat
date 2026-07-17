@@ -16,12 +16,19 @@ import { autoScrollForElements } from '@atlaskit/pragmatic-drag-and-drop-auto-sc
 import { combine } from '@atlaskit/pragmatic-drag-and-drop/combine';
 import {
   Box,
+  Button,
+  Dialog,
+  Header,
   Icon,
   IconButton,
   Icons,
+  Input,
   Line,
   Menu,
   MenuItem,
+  Overlay,
+  OverlayBackdrop,
+  OverlayCenter,
   PopOut,
   RectCords,
   Text,
@@ -206,6 +213,89 @@ export function NewCategoryDropZone({ canDrop }: NewCategoryDropZoneProps) {
         Drop here to create a new category
       </Text>
     </Box>
+  );
+}
+
+/**
+ * Name input dialog for creating/renaming categories. window.prompt is NOT
+ * implemented in Electron, so the desktop app needs a real dialog.
+ */
+type CategoryNameDialogProps = {
+  title: string;
+  initial: string;
+  submitLabel: string;
+  onSubmit: (name: string) => void;
+  onCancel: () => void;
+};
+export function CategoryNameDialog({
+  title,
+  initial,
+  submitLabel,
+  onSubmit,
+  onCancel,
+}: CategoryNameDialogProps) {
+  const [name, setName] = useState(initial);
+
+  const submit = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    onSubmit(trimmed);
+  };
+
+  return (
+    <Overlay open backdrop={<OverlayBackdrop />}>
+      <OverlayCenter>
+        <FocusTrap
+          focusTrapOptions={{
+            onDeactivate: onCancel,
+            clickOutsideDeactivates: true,
+            escapeDeactivates: stopPropagation,
+          }}
+        >
+          <Dialog variant="Surface">
+            <Header
+              style={{ padding: `0 ${config.space.S200} 0 ${config.space.S400}` }}
+              variant="Surface"
+              size="500"
+            >
+              <Box grow="Yes">
+                <Text size="H4">{title}</Text>
+              </Box>
+              <IconButton size="300" onClick={onCancel} radii="300" aria-label="Close">
+                <Icon src={Icons.Cross} />
+              </IconButton>
+            </Header>
+            <Box
+              as="form"
+              onSubmit={(evt: React.FormEvent) => {
+                evt.preventDefault();
+                submit();
+              }}
+              direction="Column"
+              gap="400"
+              style={{ padding: config.space.S400, minWidth: toRem(300) }}
+            >
+              <Input
+                autoFocus
+                value={name}
+                onChange={(evt) => setName(evt.currentTarget.value)}
+                variant="Background"
+                radii="300"
+                placeholder="Category name"
+              />
+              <Box gap="200" justifyContent="End">
+                <Button type="button" variant="Surface" fill="Soft" radii="300" onClick={onCancel}>
+                  <Text size="B300">Cancel</Text>
+                </Button>
+                <Button type="submit" variant="Primary" radii="300" disabled={!name.trim()}>
+                  <Text size="B300">{submitLabel}</Text>
+                </Button>
+              </Box>
+            </Box>
+          </Dialog>
+        </FocusTrap>
+      </OverlayCenter>
+    </Overlay>
   );
 }
 

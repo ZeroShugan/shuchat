@@ -24,9 +24,14 @@ type GridParticipant = {
   videos: GridVideo[];
 };
 
+type CropRect = { x: number; y: number; w: number; h: number };
 type GridWindow = Window & {
   __shuGetGrid?: () => GridParticipant[] | null;
   __shuStopStreamBySid?: (sid: string) => void;
+  __shuGetOriginal?: (sid: string) => MediaStream | null;
+  __shuGetCrop?: (sid: string) => CropRect | null;
+  __shuSetCrop?: (sid: string, rect: CropRect) => boolean;
+  __shuClearCrop?: (sid: string) => void;
 };
 
 /** LiveKit identity in MatrixRTC = `${mxid}:${deviceId}` — strip the device. */
@@ -222,6 +227,246 @@ function ZoomableVideo({
   );
 }
 
+/**
+ * Crop editor: shows the LIVE full (uncropped) capture; drag a rectangle over
+ * it, Apply → viewers see only that region (shim swaps the outgoing track for
+ * a canvas-cropped one). Re-open to adjust; Remove crop restores the full
+ * stream. Selection is kept in SOURCE pixels; display mapping accounts for
+ * the letterboxed (object-fit: contain) preview.
+ */
+function CropEditor({
+  win,
+  sid,
+  onClose,
+}: {
+  win: GridWindow;
+  sid: string;
+  onClose: () => void;
+}) {
+  const [stream] = useState<MediaStream | null>(() => {
+    try {
+      return win.__shuGetOriginal?.(sid) ?? null;
+    } catch {
+      return null;
+    }
+  });
+  const hadCrop = useRef<boolean>(false);
+  const [sel, setSel] = useState<CropRect | null>(() => {
+    try {
+      const r = win.__shuGetCrop?.(sid) ?? null;
+      hadCrop.current = !!r;
+      return r;
+    } catch {
+      return null;
+    }
+  });
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const boxRef = useRef<HTMLDivElement>(null);
+  const [, forceRender] = useState(0);
+  const drag = useRef<{ sx: number; sy: number } | null>(null);
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (v && stream) {
+      v.srcObject = stream;
+      v.play().catch(() => {});
+      const onMeta = () => forceRender((n) => n + 1);
+      v.addEventListener('loadedmetadata', onMeta);
+      return () => v.removeEventListener('loadedmetadata', onMeta);
+    }
+    return undefined;
+  }, [stream]);
+
+  // The video content box inside the letterboxed container (display px).
+  const contentBox = () => {
+    const el = boxRef.current;
+    const v = videoRef.current;
+    if (!el || !v || !v.videoWidth || !v.videoHeight) return null;
+    const cw = el.clientWidth;
+    const ch = el.clientHeight;
+    const scale = Math.min(cw / v.videoWidth, ch / v.videoHeight);
+    const w = v.videoWidth * scale;
+    const h = v.videoHeight * scale;
+    return { x: (cw - w) / 2, y: (ch - h) / 2, w, h, scale };
+  };
+
+  const toSource = (dx: number, dy: number): [number, number] | null => {
+    const box = contentBox();
+    const v = videoRef.current;
+    if (!box || !v) return null;
+    const x = Math.min(Math.max((dx - box.x) / box.scale, 0), v.videoWidth);
+    const y = Math.min(Math.max((dy - box.y) / box.scale, 0), v.videoHeight);
+    return [x, y];
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const rect = boxRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const p = toSource(e.clientX - rect.left, e.clientY - rect.top);
+    if (!p) return;
+    drag.current = { sx: p[0], sy: p[1] };
+    setSel({ x: p[0], y: p[1], w: 0, h: 0 });
+    boxRef.current?.setPointerCapture(e.pointerId);
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    const rect = boxRef.current?.getBoundingClientRect();
+    if (!d || !rect) return;
+    const p = toSource(e.clientX - rect.left, e.clientY - rect.top);
+    if (!p) return;
+    setSel({
+      x: Math.min(d.sx, p[0]),
+      y: Math.min(d.sy, p[1]),
+      w: Math.abs(p[0] - d.sx),
+      h: Math.abs(p[1] - d.sy),
+    });
+  };
+  const onPointerUp = () => {
+    drag.current = null;
+    // discard accidental tiny selections
+    setSel((s) => (s && (s.w < 16 || s.h < 16) ? null : s));
+  };
+
+  const apply = () => {
+    if (!sel) return;
+    const rect = {
+      x: Math.round(sel.x),
+      y: Math.round(sel.y),
+      w: Math.round(sel.w),
+      h: Math.round(sel.h),
+    };
+    try {
+      win.__shuSetCrop?.(sid, rect);
+    } catch {
+      /* iframe gone */
+    }
+    onClose();
+  };
+  const removeCrop = () => {
+    try {
+      win.__shuClearCrop?.(sid);
+    } catch {
+      /* iframe gone */
+    }
+    onClose();
+  };
+
+  const box = contentBox();
+  const selDisplay =
+    sel && box
+      ? {
+          left: box.x + sel.x * box.scale,
+          top: box.y + sel.y * box.scale,
+          width: sel.w * box.scale,
+          height: sel.h * box.scale,
+        }
+      : null;
+
+  const btn: React.CSSProperties = {
+    border: '1px solid rgba(255,255,255,0.25)',
+    borderRadius: 8,
+    background: '#2b2d31',
+    color: '#e6e8ee',
+    padding: '8px 16px',
+    cursor: 'pointer',
+    fontSize: 14,
+  };
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 100,
+        background: 'rgba(0,0,0,0.75)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 12,
+        padding: 24,
+      }}
+    >
+      <Text size="H5" style={{ color: '#e6e8ee' }}>
+        Crop stream — drag to select the region viewers will see
+      </Text>
+      <div
+        ref={boxRef}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        style={{
+          position: 'relative',
+          width: 'min(90vw, 1400px)',
+          height: 'min(70vh, 800px)',
+          background: '#000',
+          borderRadius: 10,
+          overflow: 'hidden',
+          cursor: 'crosshair',
+          touchAction: 'none',
+        }}
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          muted
+          playsInline
+          style={{ width: '100%', height: '100%', objectFit: 'contain', pointerEvents: 'none' }}
+        />
+        {selDisplay && (
+          <div
+            style={{
+              position: 'absolute',
+              ...selDisplay,
+              border: '2px solid #3ba55d',
+              boxShadow: '0 0 0 100000px rgba(0,0,0,0.6)',
+              pointerEvents: 'none',
+            }}
+          />
+        )}
+        {!stream && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#e6e8ee',
+            }}
+          >
+            Stream not available
+          </div>
+        )}
+      </div>
+      <Box gap="300" alignItems="Center">
+        <button type="button" style={btn} onClick={onClose}>
+          Cancel
+        </button>
+        {hadCrop.current && (
+          <button type="button" style={{ ...btn, color: '#ed4245' }} onClick={removeCrop}>
+            Remove crop
+          </button>
+        )}
+        <button
+          type="button"
+          style={{
+            ...btn,
+            background: sel ? '#3ba55d' : '#2b2d31',
+            opacity: sel ? 1 : 0.5,
+            cursor: sel ? 'pointer' : 'default',
+          }}
+          onClick={apply}
+          disabled={!sel}
+        >
+          Apply crop
+        </button>
+      </Box>
+    </div>
+  );
+}
+
 const requestTileFullscreen = (el: HTMLElement | null) => {
   if (!el) return;
   const anyEl = el as any;
@@ -257,6 +502,7 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
   const [grid, setGrid] = useState<GridParticipant[] | null>(null);
   const [spotlightSid, setSpotlightSid] = useState<string | null>(null);
   const [menu, setMenu] = useState<TileMenu | undefined>();
+  const [cropSid, setCropSid] = useState<string | null>(null);
   const sigRef = useRef('');
 
   // Refresh the grid snapshot on change events (+ slow safety interval), but
@@ -480,6 +726,21 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
                       variant="Surface"
                       radii="300"
                       onClick={() => {
+                        setCropSid(menu.video!.sid);
+                        setMenu(undefined);
+                      }}
+                    >
+                      <Text size="B300" truncate>
+                        Crop stream…
+                      </Text>
+                    </MenuItem>
+                  )}
+                  {menu.own && menu.video && (
+                    <MenuItem
+                      size="300"
+                      variant="Surface"
+                      radii="300"
+                      onClick={() => {
                         stopStream(menu.video!.sid);
                         setMenu(undefined);
                         if (spotlightSid === menu.video!.sid) setSpotlightSid(null);
@@ -515,6 +776,14 @@ export function CallGridOverlay({ callEmbed }: { callEmbed: CallEmbed }) {
         >
           <span />
         </PopOut>
+      )}
+
+      {cropSid && (
+        <CropEditor
+          win={callEmbed.iframe.contentWindow as GridWindow}
+          sid={cropSid}
+          onClose={() => setCropSid(null)}
+        />
       )}
     </div>
   );

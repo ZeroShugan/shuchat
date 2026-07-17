@@ -67,6 +67,7 @@ import {
 import {
   CategoryDragData,
   CategoryDropData,
+  CategoryNameDialog,
   DraggableRoomRow,
   NewCategoryDropZone,
   SpaceCategoryHeader,
@@ -796,17 +797,37 @@ export function Space() {
     }
   }, [rootRooms, catActions]);
 
+  // Name dialog for create/rename (window.prompt doesn't exist in Electron).
+  const [nameDialog, setNameDialog] = useState<{
+    title: string;
+    initial: string;
+    submitLabel: string;
+    onSubmit: (name: string) => void;
+  }>();
+
   const handleCreateCategory = useCallback(() => {
-    // eslint-disable-next-line no-alert
-    const name = window.prompt('New category name', 'New Category');
-    if (name && name.trim()) catActions.create(name);
+    setNameDialog({
+      title: 'New Category',
+      initial: '',
+      submitLabel: 'Create',
+      onSubmit: (name) => {
+        setNameDialog(undefined);
+        catActions.create(name).catch(() => {});
+      },
+    });
   }, [catActions]);
 
   const handleRenameCategory = useCallback(
     (cat: SpaceCategory) => {
-      // eslint-disable-next-line no-alert
-      const name = window.prompt('Rename category', cat.name);
-      if (name && name.trim()) catActions.rename(cat.id, name);
+      setNameDialog({
+        title: 'Rename Category',
+        initial: cat.name,
+        submitLabel: 'Rename',
+        onSubmit: (name) => {
+          setNameDialog(undefined);
+          catActions.rename(cat.id, name).catch(() => {});
+        },
+      });
     },
     [catActions]
   );
@@ -1020,6 +1041,15 @@ export function Space() {
           </NavCategory>
           {draggingRoom && canManageCategories && (
             <NewCategoryDropZone canDrop={canDropOnCategory} />
+          )}
+          {nameDialog && (
+            <CategoryNameDialog
+              title={nameDialog.title}
+              initial={nameDialog.initial}
+              submitLabel={nameDialog.submitLabel}
+              onSubmit={nameDialog.onSubmit}
+              onCancel={() => setNameDialog(undefined)}
+            />
           )}
         </Box>
       </PageNavContent>
