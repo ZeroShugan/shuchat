@@ -10,6 +10,7 @@ import {
 } from '../hooks/useTheme';
 import { useSetting } from '../state/hooks/settings';
 import { settingsAtom } from '../state/settings';
+import { clearPretextCache } from '../lib/pretextMeasure';
 
 export function UnAuthRouteThemeManager() {
   const systemThemeKind = useSystemThemeKind();
@@ -43,6 +44,10 @@ export function AuthRouteThemeManager({ children }: { children: ReactNode }) {
     } else {
       document.body.style.filter = '';
     }
+
+    // Theme swaps change font weights — drop pretext's cached font/measurements
+    // so message-height estimates match the newly rendered text.
+    clearPretextCache();
   }, [activeTheme, monochromeMode]);
 
   return <ThemeContextProvider value={activeTheme}>{children}</ThemeContextProvider>;

@@ -10,7 +10,7 @@ import { getDirectRoomPath } from '../pages/pathUtils';
 import { useNavigate } from 'react-router-dom';
 import { useMediaAuthentication } from '../hooks/useMediaAuthentication';
 import { UserAvatar } from './user-avatar';
-import { useCallStart } from '../hooks/useCallEmbed';
+import { useCallEmbed, useCallStart } from '../hooks/useCallEmbed';
 import { useSetting } from '../state/hooks/settings';
 import { settingsAtom } from '../state/settings';
 import { useCallPreferences } from '../state/hooks/callPreferences';
@@ -31,6 +31,7 @@ export function IncomingCallNotification() {
   const startCall = useCallStart(true); // true = DM call
   const { microphone, video, sound } = useCallPreferences();
   const [notificationVolume] = useSetting(settingsAtom, 'notificationVolume');
+  const callEmbed = useCallEmbed();
 
   const stopRing = useCallback(() => {
     const el = audioRef.current;
@@ -131,6 +132,10 @@ export function IncomingCallNotification() {
         (cm) => cm.sender !== myUserId
       );
       if (!someoneElseCalling) return;
+      // Don't ring if WE are already in this call — session membership updates
+      // after joining re-fire this handler, which used to restart the ring
+      // while the user was mid-call.
+      if (callMembers.some((cm) => cm.sender === myUserId)) return;
       // Don't ring if we already have an incoming notification or are already in this call
       if (incoming?.roomId === _roomId) return;
 
@@ -160,6 +165,16 @@ export function IncomingCallNotification() {
     const timeout = setTimeout(dismiss, 30000);
     return () => clearTimeout(timeout);
   }, [incoming, dismiss]);
+
+  // Belt-and-braces: whenever a call embed is active, the ring must be silent —
+  // covers joining via ANY path (room join button, nav click) rather than the
+  // popup's Answer button.
+  useEffect(() => {
+    if (callEmbed) {
+      stopRing();
+      if (incoming && callEmbed.roomId === incoming.roomId) setIncoming(null);
+    }
+  }, [callEmbed, incoming, stopRing]);
 
   return (
     <>
