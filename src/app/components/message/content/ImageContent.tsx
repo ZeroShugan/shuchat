@@ -145,6 +145,10 @@ export const ImageContent = as<'div', ImageContentProps>(
                   onDeactivate: () => setViewer(false),
                   clickOutsideDeactivates: true,
                   escapeDeactivates: stopPropagation,
+                  // focus() without preventScroll nudged the timeline when the
+                  // viewer opened/closed (browser scrolls the focused message
+                  // back into view) — the "clicked a media and chat scrolled".
+                  preventScroll: true,
                 }}
               >
                 <Modal

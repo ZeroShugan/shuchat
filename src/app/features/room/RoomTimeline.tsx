@@ -579,6 +579,16 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   const eventsLengthRef = useRef(eventsLength);
   eventsLengthRef.current = eventsLength;
 
+  // Prepend scroll restoration: save raw scroll metrics just before the
+  // backward range expansion, then restore via scrollTop delta after render.
+  // More reliable than scrollToIndex — no dependency on estimated item heights.
+  const beforePrependRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
+  const prevRangeStartRef = useRef(timeline.range.start);
+  // afterPrependRef: baseline saved AFTER initial restoration so that subsequent
+  // measurement corrections (ResizeObserver growing real heights) can be tracked
+  // and applied as additional scrollTop adjustments, preventing viewport drift.
+  const afterPrependRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
+
   const virtualizer = useVirtualizer({
     count: eventCount,
     getScrollElement,
@@ -603,6 +613,17 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       return estimateMessageHeight(mEvt, width, font);
     },
     overscan: 40,
+    // Late media measurement (an image/video above the viewport measuring
+    // taller than its estimate) used to push content down while scrollTop
+    // stayed put — the "chat scrolled up by itself" bug (on media load, on
+    // entering a room). Let the virtualizer compensate scrollTop for
+    // above-viewport growth — EXCEPT while the manual prepend restoration is
+    // running (it already corrects via scrollHeight deltas; both at once
+    // would double-compensate).
+    shouldAdjustScrollPositionOnItemSizeChange: (item, _delta, instance) =>
+      !beforePrependRef.current &&
+      !afterPrependRef.current &&
+      item.start < (instance.scrollOffset ?? 0),
   });
 
 
@@ -918,16 +939,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Prepend scroll restoration: save raw scroll metrics just before the
-  // backward range expansion, then restore via scrollTop delta after render.
-  // More reliable than scrollToIndex — no dependency on estimated item heights.
-  const beforePrependRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
-  const prevRangeStartRef = useRef(timeline.range.start);
-  // afterPrependRef: baseline saved AFTER initial restoration so that subsequent
-  // measurement corrections (ResizeObserver growing real heights) can be tracked
-  // and applied as additional scrollTop adjustments, preventing viewport drift.
-  const afterPrependRef = useRef<{ scrollTop: number; scrollHeight: number } | null>(null);
-
   useLayoutEffect(() => {
     const prevStart = prevRangeStartRef.current;
     const currStart = timeline.range.start;
@@ -1006,7 +1017,17 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
 
   const debounceSetAtBottom = useDebounce(
     useCallback((entry: IntersectionObserverEntry) => {
-      if (!entry.isIntersecting) setAtBottom(false);
+      if (entry.isIntersecting) return;
+      // The entry is up to 1s old — re-verify NOW. A transient layout shift
+      // (media loading) can bounce the anchor out of view and back within the
+      // debounce window; acting on the stale entry left the "Jump to Latest"
+      // button showing while the user was already at the bottom.
+      const scrollEl = scrollRef.current;
+      if (scrollEl) {
+        const distBottom = scrollEl.scrollHeight - scrollEl.scrollTop - scrollEl.clientHeight;
+        if (distBottom < 120) return;
+      }
+      setAtBottom(false);
     }, []),
     { wait: 1000 }
   );
