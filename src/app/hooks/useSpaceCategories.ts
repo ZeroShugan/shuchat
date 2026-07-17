@@ -42,6 +42,8 @@ export const useSpaceCategories = (space: Room): SpaceCategory[] => {
 };
 
 export type SpaceCategoryActions = {
+  /** Create a new (possibly empty) category with the given name. */
+  create: (name: string) => Promise<void>;
   /** Create a new category (generic unique name) containing the given room. */
   createWithRoom: (roomId: string) => Promise<void>;
   rename: (catId: string, name: string) => Promise<void>;
@@ -73,6 +75,18 @@ export const useSpaceCategoryActions = (
     [mx, space.roomId]
   );
 
+  const newCatId = () =>
+    `c${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
+
+  const create = useCallback(
+    async (name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      await send([...categories, { id: newCatId(), name: trimmed, rooms: [] }]);
+    },
+    [categories, send]
+  );
+
   const createWithRoom = useCallback(
     async (roomId: string) => {
       const base = 'New Category';
@@ -87,10 +101,7 @@ export const useSpaceCategoryActions = (
         ...c,
         rooms: c.rooms.filter((r) => r !== roomId),
       }));
-      await send([
-        ...stripped,
-        { id: `c${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, name, rooms: [roomId] },
-      ]);
+      await send([...stripped, { id: newCatId(), name, rooms: [roomId] }]);
     },
     [categories, send]
   );
@@ -130,7 +141,7 @@ export const useSpaceCategoryActions = (
   );
 
   return useMemo(
-    () => ({ createWithRoom, rename, remove, moveRoom }),
-    [createWithRoom, rename, remove, moveRoom]
+    () => ({ create, createWithRoom, rename, remove, moveRoom }),
+    [create, createWithRoom, rename, remove, moveRoom]
   );
 };

@@ -197,6 +197,100 @@ const darkThemeData = {
 
 export const darkTheme = createTheme(color, darkThemeData);
 
+// Discord's dark color scheme: blurple #5865F2 accent, #313338 chat surface,
+// #2B2D31 sidebar, #1E1F22 outer rail.
+export const discordTheme = createTheme(color, {
+  ...darkThemeData,
+  Background: {
+    Container: '#1E1F22',
+    ContainerHover: '#26272B',
+    ContainerActive: '#2E2F34',
+    ContainerLine: '#3A3B40',
+    OnContainer: '#DBDEE1',
+  },
+
+  Surface: {
+    Container: '#313338',
+    ContainerHover: '#383A40',
+    ContainerActive: '#404249',
+    ContainerLine: '#4A4D55',
+    OnContainer: '#DBDEE1',
+  },
+
+  SurfaceVariant: {
+    Container: '#2B2D31',
+    ContainerHover: '#33353A',
+    ContainerActive: '#3B3D43',
+    ContainerLine: '#45474E',
+    OnContainer: '#DBDEE1',
+  },
+
+  Primary: {
+    Main: '#5865F2',
+    MainHover: '#4E5BE0',
+    MainActive: '#4752C4',
+    MainLine: '#3C45A5',
+    OnMain: '#FFFFFF',
+    Container: '#3F467F',
+    ContainerHover: '#474E8C',
+    ContainerActive: '#4F5799',
+    ContainerLine: '#575FA6',
+    OnContainer: '#DEE0FC',
+  },
+
+  Secondary: {
+    Main: '#F2F3F5',
+    MainHover: '#DBDEE1',
+    MainActive: '#CDD0D4',
+    MainLine: '#BFC3C8',
+    OnMain: '#1E1F22',
+    Container: '#404249',
+    ContainerHover: '#4A4D55',
+    ContainerActive: '#545861',
+    ContainerLine: '#5E626C',
+    OnContainer: '#F2F3F5',
+  },
+
+  Success: {
+    Main: '#3BA55D',
+    MainHover: '#359A56',
+    MainActive: '#31904F',
+    MainLine: '#2D8549',
+    OnMain: '#FFFFFF',
+    Container: '#1E4630',
+    ContainerHover: '#235136',
+    ContainerActive: '#285C3D',
+    ContainerLine: '#2D6743',
+    OnContainer: '#C8EED8',
+  },
+
+  Warning: {
+    Main: '#F0B232',
+    MainHover: '#E3A72C',
+    MainActive: '#D89F27',
+    MainLine: '#CC9622',
+    OnMain: '#3F2A08',
+    Container: '#5E4A20',
+    ContainerHover: '#695324',
+    ContainerActive: '#735C27',
+    ContainerLine: '#7D652B',
+    OnContainer: '#F8E7C4',
+  },
+
+  Critical: {
+    Main: '#ED4245',
+    MainHover: '#E03B3E',
+    MainActive: '#D53438',
+    MainLine: '#C92D31',
+    OnMain: '#FFFFFF',
+    Container: '#5C2427',
+    ContainerHover: '#682A2D',
+    ContainerActive: '#743033',
+    ContainerLine: '#803639',
+    OnContainer: '#F8D3D4',
+  },
+});
+
 export const butterTheme = createTheme(color, {
   ...darkThemeData,
   Background: {

@@ -2,6 +2,7 @@ import React, {
   MouseEventHandler,
   forwardRef,
   useCallback,
+  useEffect,
   useMemo,
   useRef,
   useState,
@@ -107,6 +108,8 @@ import { BreakWord } from '../../../styles/Text.css';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
 import { useCallEmbed } from '../../../hooks/useCallEmbed';
 import { AddToFolderPrompt } from '../../../components/add-to-folder-prompt/AddToFolderPrompt';
+import { useOpenCreateRoomModal } from '../../../state/hooks/createRoomModal';
+import { CreateRoomType } from '../../../components/create-room/types';
 
 // One row of the space's left-nav list: a sub-space header, a category
 // header (custom or automatic CHAT/VOICE bucket), or a room.
@@ -628,9 +631,10 @@ export function Space() {
     const leftovers = rootItems.filter((i) => !catMap.has(i.roomId));
     const chatRooms = leftovers.filter((i) => !getRoom(i.roomId)?.isCallRoom());
     const voiceRooms = leftovers.filter((i) => !!getRoom(i.roomId)?.isCallRoom());
-    // While dragging, show empty buckets too so a room can be dragged back out
-    // of a custom category.
-    const showEmpty = !!draggingRoom && canManageCategories;
+    // Admins always see both buckets (their "+" menu is the create-room entry
+    // point); others only see non-empty ones. While dragging, empty buckets
+    // appear so a room can be dragged back out of a custom category.
+    const showEmpty = canManageCategories || !!draggingRoom;
     if (chatRooms.length > 0 || showEmpty) {
       pushCategory(AUTO_CHAT_CATEGORY, 'CHAT ROOMS', chatRooms, undefined, 'chat');
     }
@@ -752,6 +756,51 @@ export function Space() {
   );
 
   useCategoryDropMonitor(scrollRef, setDraggingRoom, handleCategoryDrop);
+
+  // ---- "+" menu: create rooms / categories ----
+  const openCreateRoomModal = useOpenCreateRoomModal();
+  // When a room is created from a CUSTOM category's "+" menu, remember it so
+  // the next new child of this space is auto-assigned to that category.
+  const pendingAssignRef = useRef<{ catId: string; existing: Set<string>; ts: number } | null>(
+    null
+  );
+  const handleCreateRoomIn = useCallback(
+    (catId: string | undefined, kind: 'chat' | 'voice') => {
+      if (catId) {
+        pendingAssignRef.current = {
+          catId,
+          existing: new Set(rootRooms.map((i) => i.roomId)),
+          ts: Date.now(),
+        };
+      } else {
+        pendingAssignRef.current = null;
+      }
+      openCreateRoomModal(
+        space.roomId,
+        kind === 'voice' ? CreateRoomType.VoiceRoom : CreateRoomType.TextRoom
+      );
+    },
+    [openCreateRoomModal, space.roomId, rootRooms]
+  );
+  useEffect(() => {
+    const pending = pendingAssignRef.current;
+    if (!pending) return;
+    if (Date.now() - pending.ts > 5 * 60_000) {
+      pendingAssignRef.current = null;
+      return;
+    }
+    const added = rootRooms.find((i) => !pending.existing.has(i.roomId));
+    if (added) {
+      pendingAssignRef.current = null;
+      catActions.moveRoom(added.roomId, pending.catId).catch(() => {});
+    }
+  }, [rootRooms, catActions]);
+
+  const handleCreateCategory = useCallback(() => {
+    // eslint-disable-next-line no-alert
+    const name = window.prompt('New category name', 'New Category');
+    if (name && name.trim()) catActions.create(name);
+  }, [catActions]);
 
   const handleRenameCategory = useCallback(
     (cat: SpaceCategory) => {
@@ -907,12 +956,17 @@ export function Space() {
                         onToggle={handleCategoryClick}
                         canManage={canManageCategories}
                         custom={!!entry.custom}
+                        autoKind={entry.auto}
                         addCandidates={getAddCandidates(entry)}
                         onAdd={(rId) =>
                           entry.custom
                             ? catActions.moveRoom(rId, entry.catId)
                             : catActions.moveRoom(rId, undefined)
                         }
+                        onCreateRoom={(kind) =>
+                          handleCreateRoomIn(entry.custom ? entry.catId : undefined, kind)
+                        }
+                        onCreateCategory={handleCreateCategory}
                         onRename={
                           entry.custom ? () => handleRenameCategory(entry.custom!) : undefined
                         }

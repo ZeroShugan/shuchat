@@ -19,6 +19,7 @@ import {
   Icon,
   IconButton,
   Icons,
+  Line,
   Menu,
   MenuItem,
   PopOut,
@@ -219,8 +220,12 @@ type SpaceCategoryHeaderProps = {
   onToggle: MouseEventHandler<HTMLButtonElement>;
   canManage: boolean;
   custom: boolean;
+  /** Which auto bucket this is ('chat' | 'voice'), undefined for custom. */
+  autoKind?: 'chat' | 'voice';
   addCandidates: AddRoomCandidate[];
   onAdd: (roomId: string) => void;
+  onCreateRoom: (kind: 'chat' | 'voice') => void;
+  onCreateCategory: () => void;
   onRename?: () => void;
   onDelete?: () => void;
   /** Drop-target wiring: appending a dragged room to this category. */
@@ -235,8 +240,11 @@ export function SpaceCategoryHeader({
   onToggle,
   canManage,
   custom,
+  autoKind,
   addCandidates,
   onAdd,
+  onCreateRoom,
+  onCreateCategory,
   onRename,
   onDelete,
   dndCatId,
@@ -324,34 +332,80 @@ export function SpaceCategoryHeader({
                 escapeDeactivates: stopPropagation,
               }}
             >
-              <Menu ref={addMenuRef} tabIndex={-1} style={{ maxHeight: '50vh', overflowY: 'auto' }}>
-                <Box direction="Column" style={{ padding: config.space.S100, minWidth: toRem(180) }}>
-                  <Box style={{ padding: config.space.S100 }}>
-                    <Text size="L400">Add room</Text>
-                  </Box>
-                  {addCandidates.length === 0 && (
-                    <Box style={{ padding: config.space.S100 }}>
-                      <Text size="T200" priority="300">
-                        No rooms to add
-                      </Text>
-                    </Box>
-                  )}
-                  {addCandidates.map((c) => (
+              <Menu ref={addMenuRef} tabIndex={-1} style={{ maxHeight: '60vh', overflowY: 'auto' }}>
+                <Box direction="Column" style={{ padding: config.space.S100, minWidth: toRem(200) }}>
+                  {(custom || autoKind === 'chat') && (
                     <MenuItem
-                      key={c.roomId}
                       size="300"
-                      variant="Surface"
+                      variant="Primary"
+                      fill="None"
                       radii="300"
+                      before={<Icon size="50" src={Icons.Hash} />}
                       onClick={() => {
                         setAddAnchor(undefined);
-                        onAdd(c.roomId);
+                        onCreateRoom('chat');
                       }}
                     >
                       <Text size="B300" truncate>
-                        {c.name}
+                        New Chat Room
                       </Text>
                     </MenuItem>
-                  ))}
+                  )}
+                  {(custom || autoKind === 'voice') && (
+                    <MenuItem
+                      size="300"
+                      variant="Primary"
+                      fill="None"
+                      radii="300"
+                      before={<Icon size="50" src={Icons.VolumeHigh} />}
+                      onClick={() => {
+                        setAddAnchor(undefined);
+                        onCreateRoom('voice');
+                      }}
+                    >
+                      <Text size="B300" truncate>
+                        New Voice Room
+                      </Text>
+                    </MenuItem>
+                  )}
+                  <MenuItem
+                    size="300"
+                    variant="Surface"
+                    radii="300"
+                    before={<Icon size="50" src={Icons.Category} />}
+                    onClick={() => {
+                      setAddAnchor(undefined);
+                      onCreateCategory();
+                    }}
+                  >
+                    <Text size="B300" truncate>
+                      New Category
+                    </Text>
+                  </MenuItem>
+                  {addCandidates.length > 0 && (
+                    <>
+                      <Line variant="Surface" size="300" style={{ margin: `${config.space.S100} 0` }} />
+                      <Box style={{ padding: config.space.S100 }}>
+                        <Text size="L400">Move here</Text>
+                      </Box>
+                      {addCandidates.map((c) => (
+                        <MenuItem
+                          key={c.roomId}
+                          size="300"
+                          variant="Surface"
+                          radii="300"
+                          onClick={() => {
+                            setAddAnchor(undefined);
+                            onAdd(c.roomId);
+                          }}
+                        >
+                          <Text size="B300" truncate>
+                            {c.name}
+                          </Text>
+                        </MenuItem>
+                      ))}
+                    </>
+                  )}
                 </Box>
               </Menu>
             </FocusTrap>
