@@ -254,6 +254,28 @@ ipcMain.on('popout:fit', (e, vw, vh) => {
     w.setContentSize(cw, ch + FOOTER);
     w.setAspectRatio(vw / vh, { width: 0, height: FOOTER });
     logMain(`popout fit ${vw}x${vh} -> content ${cw}x${ch + FOOTER}`);
+    // A maximized/fullscreen window can NEVER match the locked ratio — on
+    // Windows the aspect enforcement then fights the maximize in a resize
+    // loop, starving the renderer (stream froze after a few seconds). Unlock
+    // while maximized/fullscreen, re-lock on restore.
+    if (!w.__shuAspectHooked) {
+      w.__shuAspectHooked = true;
+      const unlock = () => {
+        try { w.setAspectRatio(0); } catch (e2) { /* ignore */ }
+        logMain('popout aspect unlocked (maximize/fullscreen)');
+      };
+      const relock = () => {
+        try {
+          if (w.__shuAspect) w.setAspectRatio(w.__shuAspect, { width: 0, height: FOOTER });
+        } catch (e2) { /* ignore */ }
+      };
+      w.on('maximize', unlock);
+      w.on('enter-full-screen', unlock);
+      w.on('unmaximize', relock);
+      w.on('leave-full-screen', relock);
+    }
+    w.__shuAspect = vw / vh;
+    if (w.isMaximized() || w.isFullScreen()) w.setAspectRatio(0);
   } catch (err) {
     logMain(`popout fit failed: ${err && err.message ? err.message : err}`);
   }
@@ -371,6 +393,10 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: true,
+      // Chromium throttles timers in backgrounded windows; LiveKit's
+      // keepalive then times out and the call drops "for no reason" while
+      // the app is minimized/behind a game. Keep timers full-rate.
+      backgroundThrottling: false,
     },
   });
 
@@ -507,6 +533,8 @@ function createWindow() {
             preload: path.join(__dirname, 'preload.js'),
             contextIsolation: true,
             nodeIntegration: false,
+            // keep the stream rendering at full rate even when covered
+            backgroundThrottling: false,
           },
         },
       };
@@ -764,6 +792,15 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     logMain(`=== ShuChat desktop v${app.getVersion()} starting (${process.platform}) ===`);
+    // Windows "Efficiency Mode" can suspend a backgrounded app — mid-call
+    // that reads as the call randomly ending. Keep the process unsuspended
+    // (screen may still sleep; this only blocks app suspension).
+    try {
+      const { powerSaveBlocker } = require('electron');
+      powerSaveBlocker.start('prevent-app-suspension');
+    } catch (e) {
+      logMain(`powerSaveBlocker failed: ${e && e.message ? e.message : e}`);
+    }
     createWindow();
     // Pre-create the tray only if the user has chosen to keep the app in tray.
     if (readConfig().closeAction === 'tray') createTray();
