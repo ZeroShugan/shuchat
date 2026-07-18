@@ -194,6 +194,17 @@ function DraggableDmRow({ roomId, children }: { roomId: string; children: ReactN
       getInitialData: () => ({ item: roomId }),
     });
   }, [roomId]);
+
+  // The row's NavLink anchor (and avatar img) are natively draggable and
+  // hijack the drag before pragmatic-dnd sees it — the sidebar then shows a
+  // "blocked" cursor because no pdnd drop target accepts a native drag.
+  // Runs every render so re-rendered rows stay covered.
+  useEffect(() => {
+    ref.current?.querySelectorAll('a, img').forEach((el) => {
+      (el as HTMLElement).draggable = false;
+    });
+  });
+
   return <div ref={ref}>{children}</div>;
 }
 
