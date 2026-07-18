@@ -87,7 +87,8 @@ import { copyToClipboard } from '../../../utils/dom';
 import { stopPropagation } from '../../../utils/keyboard';
 import { getMatrixToRoom } from '../../../plugins/matrix-to';
 import { getViaServers } from '../../../plugins/via-servers';
-import { getRoomAvatarUrl, isSpace } from '../../../utils/room';
+import { getDirectRoomAvatarUrl, getRoomAvatarUrl, isSpace } from '../../../utils/room';
+import { mDirectAtom } from '../../../state/mDirectList';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { useSetting } from '../../../state/hooks/settings';
 import { settingsAtom } from '../../../state/settings';
@@ -255,6 +256,21 @@ type FolderDraggable = {
 };
 type SidebarDraggable = string | FolderDraggable;
 
+// Pinned DM rooms should show the partner's avatar, not the (usually unset)
+// room avatar.
+const useSidebarRoomAvatar = () => {
+  const mx = useMatrixClient();
+  const useAuthentication = useMediaAuthentication();
+  const mDirects = useAtomValue(mDirectAtom);
+  return useCallback(
+    (room: Room): string | undefined =>
+      (mDirects.has(room.roomId)
+        ? getDirectRoomAvatarUrl(mx, room, 96, useAuthentication)
+        : getRoomAvatarUrl(mx, room, 96, useAuthentication)) ?? undefined,
+    [mx, mDirects, useAuthentication]
+  );
+};
+
 const useDraggableItem = (
   item: SidebarDraggable,
   targetRef: RefObject<HTMLElement>,
@@ -389,7 +405,10 @@ const useDnDMonitor = (
           onDragging(undefined);
           const { dropTargets } = location.current;
           if (dropTargets.length === 0) return;
-          const item = source.data.item as SidebarDraggable;
+          const item = source.data.item as SidebarDraggable | undefined;
+          // drags from other DnD systems (e.g. space category room lists)
+          // carry no sidebar item — ignore them
+          if (item === undefined) return;
           const containerItem = dropTargets[0].data.item as SidebarDraggable;
           const instructionType = dropTargets[0].data.instructionType as
             | InstructionType
@@ -424,7 +443,7 @@ function SpaceTab({
   onUnpin,
 }: SpaceTabProps) {
   const mx = useMatrixClient();
-  const useAuthentication = useMediaAuthentication();
+  const getSidebarAvatar = useSidebarRoomAvatar();
   const targetRef = useRef<HTMLDivElement>(null);
 
   const spaceDraggable: SidebarDraggable = useMemo(
@@ -477,7 +496,7 @@ function SpaceTab({
               >
                 <RoomAvatar
                   roomId={space.roomId}
-                  src={getRoomAvatarUrl(mx, space, 96, useAuthentication) ?? undefined}
+                  src={getSidebarAvatar(space)}
                   alt={space.name}
                   renderFallback={() => (
                     <Text size={folder ? 'H6' : 'H4'}>{nameInitials(space.name, 2)}</Text>
@@ -654,7 +673,7 @@ function ClosedSpaceFolder({
   onUngroup,
 }: ClosedSpaceFolderProps & { onUngroup: (folderId: string) => void }) {
   const mx = useMatrixClient();
-  const useAuthentication = useMediaAuthentication();
+  const getSidebarAvatar = useSidebarRoomAvatar();
   const handlerRef = useRef<HTMLDivElement>(null);
   const [menuAnchor, setMenuAnchor] = useState<RectCords>();
 
@@ -688,7 +707,7 @@ function ClosedSpaceFolder({
                     <SidebarAvatar key={sId} size="200" radii="300">
                       <RoomAvatar
                         roomId={space.roomId}
-                        src={getRoomAvatarUrl(mx, space, 96, useAuthentication) ?? undefined}
+                        src={getSidebarAvatar(space)}
                         alt={space.name}
                         renderFallback={() => (
                           <Text size="Inherit">

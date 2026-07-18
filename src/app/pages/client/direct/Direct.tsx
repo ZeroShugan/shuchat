@@ -1,4 +1,13 @@
-import React, { MouseEventHandler, forwardRef, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+  MouseEventHandler,
+  ReactNode,
+  forwardRef,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { draggable } from '@atlaskit/pragmatic-drag-and-drop/element/adapter';
 import { RoomEvent as MatrixRoomEvent } from 'matrix-js-sdk';
 import { useAtom, useAtomValue } from 'jotai';
 import {
@@ -172,6 +181,22 @@ function DirectEmpty() {
   );
 }
 
+// Dragging a DM row onto the space sidebar pins it there as a shortcut. The
+// drag data shape ({ item: roomId }) matches the sidebar's own draggables, so
+// its existing drop targets and reorder logic handle the pin (SpaceTabs.tsx).
+function DraggableDmRow({ roomId, children }: { roomId: string; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return undefined;
+    return draggable({
+      element,
+      getInitialData: () => ({ item: roomId }),
+    });
+  }, [roomId]);
+  return <div ref={ref}>{children}</div>;
+}
+
 const DEFAULT_CATEGORY_ID = makeNavCategoryId('direct', 'direct');
 export function Direct() {
   const mx = useMatrixClient();
@@ -327,17 +352,19 @@ export function Direct() {
                       key={vItem.index}
                       ref={virtualizer.measureElement}
                     >
-                      <RoomNavItem
-                        room={room}
-                        selected={selected}
-                        showAvatar
-                        direct
-                        linkPath={getDirectRoomPath(getCanonicalAliasOrRoomId(mx, roomId))}
-                        notificationMode={getRoomNotificationMode(
-                          notificationPreferences,
-                          room.roomId
-                        )}
-                      />
+                      <DraggableDmRow roomId={roomId}>
+                        <RoomNavItem
+                          room={room}
+                          selected={selected}
+                          showAvatar
+                          direct
+                          linkPath={getDirectRoomPath(getCanonicalAliasOrRoomId(mx, roomId))}
+                          notificationMode={getRoomNotificationMode(
+                            notificationPreferences,
+                            room.roomId
+                          )}
+                        />
+                      </DraggableDmRow>
                     </VirtualTile>
                   );
                 })}
