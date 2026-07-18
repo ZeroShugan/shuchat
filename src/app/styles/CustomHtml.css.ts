@@ -1,4 +1,4 @@
-import { style } from '@vanilla-extract/css';
+import { createVar, fallbackVar, style } from '@vanilla-extract/css';
 import { recipe } from '@vanilla-extract/recipes';
 import { color, config, DefaultReset, toRem } from 'folds';
 import { ContainerColor } from './ContainerColor.css';
@@ -196,12 +196,20 @@ export const Command = recipe({
   },
 });
 
+// Emoji glyphs are drawn oversized (1.76em) inside a 1em layout box and
+// shifted up with a negative `top` so inline emojis look big without growing
+// the line. Jumbo (emoji-only) messages override these vars from
+// message/layout/layout.css.ts so the line box reserves the glyph's real
+// height instead of letting it overflow onto the sender name above.
+export const EmoticonBaseHeightVar = createVar();
+export const EmoticonTopVar = createVar();
+
 export const EmoticonBase = style([
   DefaultReset,
   {
     display: 'inline-block',
     padding: '0.05rem',
-    height: '1em',
+    height: fallbackVar(EmoticonBaseHeightVar, '1em'),
     verticalAlign: 'middle',
   },
 ]);
@@ -220,7 +228,7 @@ export const Emoticon = recipe({
       lineHeight: '1em',
       verticalAlign: 'middle',
       position: 'relative',
-      top: '-0.46em',
+      top: fallbackVar(EmoticonTopVar, '-0.46em'),
       borderRadius: config.radii.R300,
     },
   ],

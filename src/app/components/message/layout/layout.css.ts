@@ -1,6 +1,7 @@
 import { createVar, keyframes, style, styleVariants } from '@vanilla-extract/css';
 import { recipe, RecipeVariants } from '@vanilla-extract/recipes';
 import { DefaultReset, color, config, toRem } from 'folds';
+import { EmoticonBaseHeightVar, EmoticonTopVar } from '../../../styles/CustomHtml.css';
 
 export const StickySection = style({
   position: 'sticky',
@@ -192,9 +193,16 @@ export const MessageTextBody = recipe({
     jumboEmoji: {
       true: {
         fontSize: '1.504em',
-        // taller line box: big emoji glyphs overflow upward and covered the
-        // sender name when the emoji was the first message of a group
-        lineHeight: 1.35,
+        // Emoticon spans normally draw a 1.76em glyph inside a 1em box shifted
+        // up (top: -0.46em) — fine inline, but in emoji-only messages the
+        // overflow landed on the sender name above. Here the vars make the
+        // glyph occupy its real height in the flow instead, and the line box
+        // is sized to contain it.
+        lineHeight: 1.9,
+        vars: {
+          [EmoticonBaseHeightVar]: '1.76em',
+          [EmoticonTopVar]: '0em',
+        },
       },
     },
     emote: {
