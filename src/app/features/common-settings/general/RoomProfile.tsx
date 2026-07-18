@@ -11,7 +11,7 @@ import {
   Text,
   TextArea,
 } from 'folds';
-import React, { FormEventHandler, useCallback, useMemo, useState } from 'react';
+import React, { FormEventHandler, useCallback, useMemo, useRef, useState } from 'react';
 import { useAtomValue } from 'jotai';
 import Linkify from 'linkify-react';
 import classNames from 'classnames';
@@ -40,6 +40,7 @@ import { useFilePicker } from '../../../hooks/useFilePicker';
 import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { useAlive } from '../../../hooks/useAlive';
 import { RoomPermissionsAPI } from '../../../hooks/useRoomPermissions';
+import { EmojiPickerButton } from '../../../components/emoji-picker-button';
 
 type RoomProfileEditProps = {
   canEditAvatar: boolean;
@@ -64,6 +65,7 @@ export function RoomProfileEdit({
   const alive = useAlive();
   const useAuthentication = useMediaAuthentication();
   const joinRule = useRoomJoinRule(room);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const [roomAvatar, setRoomAvatar] = useState(avatar);
 
   const avatarUrl = roomAvatar
@@ -212,11 +214,15 @@ export function RoomProfileEdit({
       <Box direction="Inherit" gap="100">
         <Text size="L400">Name</Text>
         <Input
+          ref={nameInputRef}
           name="nameInput"
           defaultValue={name}
           variant="Secondary"
           radii="300"
           readOnly={!canEditName || submitting}
+          after={
+            canEditName && <EmojiPickerButton inputRef={nameInputRef} disabled={submitting} />
+          }
         />
       </Box>
       <Box direction="Inherit" gap="100">

@@ -17,6 +17,7 @@ import { useCreateSelected } from '../../../hooks/router/useCreateSelected';
 import { JoinAddressPrompt } from '../../../components/join-address-prompt';
 import { CreateFolderPrompt } from '../../../components/add-to-folder-prompt/CreateFolderPrompt';
 import { AddFriendPrompt } from '../../../components/add-friend-prompt';
+import { NewDirectMessagePrompt } from '../../../components/new-dm-prompt';
 import { _RoomSearchParams } from '../../paths';
 
 export function CreateTab() {
@@ -27,6 +28,7 @@ export function CreateTab() {
   const [joinAddress, setJoinAddress] = useState(false);
   const [createFolder, setCreateFolder] = useState(false);
   const [addFriend, setAddFriend] = useState(false);
+  const [newDm, setNewDm] = useState(false);
 
   const handleMenu: MouseEventHandler<HTMLButtonElement> = (evt) => {
     setMenuCords(menuCords ? undefined : evt.currentTarget.getBoundingClientRect());
@@ -49,6 +51,11 @@ export function CreateTab() {
 
   const handleAddFriend = () => {
     setAddFriend(true);
+    setMenuCords(undefined);
+  };
+
+  const handleNewDm = () => {
+    setNewDm(true);
     setMenuCords(undefined);
   };
 
@@ -135,6 +142,23 @@ export function CreateTab() {
                       radii="0"
                       as="button"
                       type="button"
+                      onClick={handleNewDm}
+                    >
+                      <SettingTile before={<Icon size="400" src={Icons.Mention} />}>
+                        <Text size="H6">New Direct Message</Text>
+                        <Text size="T300" priority="300">
+                          Pick someone you know and start chatting.
+                        </Text>
+                      </SettingTile>
+                    </SequenceCard>
+                    <SequenceCard
+                      style={{ padding: config.space.S300 }}
+                      variant="Surface"
+                      direction="Column"
+                      gap="100"
+                      radii="0"
+                      as="button"
+                      type="button"
                       onClick={handleAddFriend}
                     >
                       <SettingTile before={<Icon size="400" src={Icons.User} />}>
@@ -181,6 +205,7 @@ export function CreateTab() {
               />
             )}
             {addFriend && <AddFriendPrompt onCancel={() => setAddFriend(false)} />}
+            {newDm && <NewDirectMessagePrompt requestClose={() => setNewDm(false)} />}
           </PopOut>
         )}
       </SidebarItemTooltip>

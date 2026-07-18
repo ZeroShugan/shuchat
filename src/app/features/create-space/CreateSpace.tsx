@@ -1,4 +1,4 @@
-import React, { FormEventHandler, useCallback, useEffect, useState } from 'react';
+import React, { FormEventHandler, useCallback, useEffect, useRef, useState } from 'react';
 import { MatrixError, Room } from 'matrix-js-sdk';
 import {
   Box,
@@ -39,6 +39,7 @@ import {
   useAdditionalCreators,
 } from '../../components/create-room';
 import { RoomType } from '../../../types/matrix/room';
+import { EmojiPickerButton } from '../../components/emoji-picker-button';
 
 const getCreateSpaceAccessToIcon = (access: CreateRoomAccess) => {
   if (access === CreateRoomAccess.Private) return Icons.SpaceLock;
@@ -54,6 +55,7 @@ type CreateSpaceFormProps = {
 export function CreateSpaceForm({ defaultAccess, space, onCreate }: CreateSpaceFormProps) {
   const mx = useMatrixClient();
   const alive = useAlive();
+  const nameInputRef = useRef<HTMLInputElement>(null);
 
   const capabilities = useCapabilities();
   const roomVersions = capabilities['m.room_versions'];
@@ -150,8 +152,10 @@ export function CreateSpaceForm({ defaultAccess, space, onCreate }: CreateSpaceF
       <Box shrink="No" direction="Column" gap="100">
         <Text size="L400">Name</Text>
         <Input
+          ref={nameInputRef}
           required
           before={<Icon size="100" src={getCreateSpaceAccessToIcon(access)} />}
+          after={<EmojiPickerButton inputRef={nameInputRef} disabled={disabled} />}
           name="nameInput"
           autoFocus
           size="500"
