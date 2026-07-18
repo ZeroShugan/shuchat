@@ -72,6 +72,13 @@ const copyFiles = {
       dest: 'public/element-call',
     },
     {
+      // RNNoise neural noise suppression (vendored @jitsi/rnnoise-wasm 0.2.1,
+      // SOC-scanned 2026-07-18, patched to a classic script). Lazily loaded by
+      // media-shim when Settings → Voice & Video → RNNoise is enabled.
+      src: 'call-shim/rnnoise-sync.js',
+      dest: 'public/element-call',
+    },
+    {
       src: 'node_modules/pdfjs-dist/build/pdf.worker.min.mjs',
       dest: '',
       rename: 'pdf.worker.min.js',

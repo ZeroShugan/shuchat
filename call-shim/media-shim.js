@@ -23,6 +23,7 @@
       vvSensitivity: -100,
       voiceVolume: 0.5,
       vvMicChannels: 'mono',
+      vvRnnoise: false,
       vvCamDeviceId: '',
       vvStreamResolution: '1080p',
       vvStreamFps: 30,
@@ -631,6 +632,125 @@
     }
   }, 30000);
 
+  /* ---- RNNoise (neural noise suppression, SOC-scanned @jitsi/rnnoise-wasm) --
+     Vendored single-file sync build (wasm inlined) served next to this shim.
+     Loaded lazily only when the setting is on. Denoiser sits between gain and
+     analyser so the noise gate thresholds see the CLEANED signal. RNNoise
+     needs 48 kHz / 480-sample frames — on any other context rate it becomes a
+     transparent passthrough (logged once). */
+  var rnnoiseModPromise = null;
+  function loadRnnoise() {
+    if (rnnoiseModPromise) return rnnoiseModPromise;
+    rnnoiseModPromise = new Promise(function (resolve) {
+      try {
+        var s = document.createElement('script');
+        s.src = 'rnnoise-sync.js'; // same dir as media-shim.js in the EC dist
+        s.onload = function () {
+          try {
+            window.createRNNWasmModuleSync().then(
+              function (m) { shimLog('RNNoise wasm ready'); resolve(m); },
+              function (e) { shimLog('rnnoise init rejected: ' + e); resolve(null); }
+            );
+          } catch (e) {
+            shimLog('rnnoise factory failed: ' + (e && e.message ? e.message : e));
+            resolve(null);
+          }
+        };
+        s.onerror = function () { shimLog('rnnoise-sync.js failed to load'); resolve(null); };
+        document.head.appendChild(s);
+      } catch (e) {
+        resolve(null);
+      }
+    });
+    return rnnoiseModPromise;
+  }
+
+  var FRAME = 480; // RNNoise frame size @48kHz
+  function makeDenoiser(ctx) {
+    // ScriptProcessor(512) on the iframe main thread: universally supported in
+    // our Electron/Chromium target, ~10ms added latency from frame re-blocking.
+    var node = ctx.createScriptProcessor(512, 1, 1);
+    var st = {
+      mod: null, state: 0, pIn: 0, pOut: 0,
+      inBuf: new Float32Array(8192), inLen: 0,
+      outBuf: new Float32Array(8192), outLen: 0,
+      warnedRate: false,
+    };
+    loadRnnoise().then(function (m) {
+      if (!m) return;
+      try {
+        st.state = m._rnnoise_create();
+        st.pIn = m._malloc(FRAME * 4);
+        st.pOut = m._malloc(FRAME * 4);
+        st.mod = m;
+        shimLog('RNNoise denoiser active (ctx ' + ctx.sampleRate + 'Hz)');
+      } catch (e) {
+        shimLog('rnnoise state init failed: ' + (e && e.message ? e.message : e));
+        st.mod = null;
+      }
+    });
+    node.onaudioprocess = function (ev) {
+      var input = ev.inputBuffer.getChannelData(0);
+      var output = ev.outputBuffer.getChannelData(0);
+      var m = st.mod;
+      if (!m || ctx.sampleRate !== 48000) {
+        if (!st.warnedRate && m && ctx.sampleRate !== 48000) {
+          st.warnedRate = true;
+          shimLog('RNNoise passthrough: context rate ' + ctx.sampleRate + ' != 48000');
+        }
+        output.set(input);
+        return;
+      }
+      // enqueue input
+      if (st.inLen + input.length <= st.inBuf.length) {
+        st.inBuf.set(input, st.inLen);
+        st.inLen += input.length;
+      }
+      // process whole 480-sample frames (RNNoise expects int16-range floats)
+      while (st.inLen >= FRAME) {
+        var H = m.HEAPF32; // re-read: heap can be replaced on memory growth
+        var bIn = st.pIn >> 2;
+        for (var i = 0; i < FRAME; i += 1) H[bIn + i] = st.inBuf[i] * 32768;
+        try {
+          m._rnnoise_process_frame(st.state, st.pOut, st.pIn);
+        } catch (e) {
+          st.mod = null; // hard failure → permanent passthrough
+          shimLog('rnnoise frame error, disabling: ' + (e && e.message ? e.message : e));
+          break;
+        }
+        H = m.HEAPF32;
+        var bOut = st.pOut >> 2;
+        if (st.outLen + FRAME <= st.outBuf.length) {
+          for (var j = 0; j < FRAME; j += 1) st.outBuf[st.outLen + j] = H[bOut + j] / 32768;
+          st.outLen += FRAME;
+        }
+        st.inBuf.copyWithin(0, FRAME, st.inLen);
+        st.inLen -= FRAME;
+      }
+      // dequeue to output; zero-fill during the initial ~10ms priming
+      var n = Math.min(output.length, st.outLen);
+      for (var k = 0; k < n; k += 1) output[k] = st.outBuf[k];
+      for (var z = n; z < output.length; z += 1) output[z] = 0;
+      if (n > 0) {
+        st.outBuf.copyWithin(0, n, st.outLen);
+        st.outLen -= n;
+      }
+    };
+    node.__shuCleanup = function () {
+      try {
+        if (st.mod) {
+          st.mod._free(st.pIn);
+          st.mod._free(st.pOut);
+          st.mod._rnnoise_destroy(st.state);
+        }
+      } catch (e) {
+        /* ignore */
+      }
+      st.mod = null;
+    };
+    return node;
+  }
+
   /* ---- input: device + constraints + optional gain/gate processing ---- */
   var realGUM = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
 
@@ -647,8 +767,22 @@
     var gate = ctx.createGain();
     gate.gain.value = 1;
     var dest = ctx.createMediaStreamDestination();
+    var denoise = null;
+    if (S.vvRnnoise) {
+      try {
+        denoise = makeDenoiser(ctx);
+      } catch (e) {
+        shimLog('denoiser create failed: ' + (e && e.message ? e.message : e));
+        denoise = null;
+      }
+    }
     src.connect(gain);
-    gain.connect(analyser);
+    if (denoise) {
+      gain.connect(denoise);
+      denoise.connect(analyser);
+    } else {
+      gain.connect(analyser);
+    }
     analyser.connect(gate);
     gate.connect(dest);
 
@@ -697,6 +831,7 @@
         /* ignore */
       }
       clearInterval(timer);
+      if (denoise && denoise.__shuCleanup) denoise.__shuCleanup();
       var idx = chains.indexOf(chain);
       if (idx >= 0) chains.splice(idx, 1);
       try {
@@ -740,7 +875,8 @@
         if (S.vvMicDeviceId && (!cur || cur === 'default')) {
           a.deviceId = { ideal: S.vvMicDeviceId };
         }
-        a.noiseSuppression = S.vvNoiseSuppression;
+        // RNNoise replaces the browser's built-in NS (both at once = artifacts)
+        a.noiseSuppression = S.vvRnnoise ? false : S.vvNoiseSuppression;
         a.echoCancellation = S.vvEchoCancellation;
         a.autoGainControl = S.vvAutoGainControl;
         // Mic channels: 'mono' (default) downmixes multi-channel devices to a

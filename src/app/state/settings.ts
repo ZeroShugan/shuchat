@@ -57,6 +57,7 @@ export interface Settings {
   vvSpeakerLabel: string; // display label for Firefox's selectAudioOutput picker choice
   vvMicGain: number; // input volume 0.0–2.0 (1 = 100%)
   vvNoiseSuppression: boolean;
+  vvRnnoise: boolean;
   vvEchoCancellation: boolean;
   vvAutoGainControl: boolean;
   vvAutoSensitivity: boolean;
@@ -122,6 +123,7 @@ const defaultSettings: Settings = {
   vvSpeakerLabel: '',
   vvMicGain: 1,
   vvNoiseSuppression: true,
+  vvRnnoise: false,
   vvEchoCancellation: true,
   vvAutoGainControl: true,
   vvAutoSensitivity: true,

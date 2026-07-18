@@ -33,6 +33,7 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
   const [speakerLabel, setSpeakerLabel] = useSetting(settingsAtom, 'vvSpeakerLabel');
   const [micGain, setMicGain] = useSetting(settingsAtom, 'vvMicGain');
   const [noiseSuppression, setNoiseSuppression] = useSetting(settingsAtom, 'vvNoiseSuppression');
+  const [rnnoise, setRnnoise] = useSetting(settingsAtom, 'vvRnnoise');
   const [echoCancellation, setEchoCancellation] = useSetting(settingsAtom, 'vvEchoCancellation');
   const [autoGainControl, setAutoGainControl] = useSetting(settingsAtom, 'vvAutoGainControl');
   const [autoSensitivity, setAutoSensitivity] = useSetting(settingsAtom, 'vvAutoSensitivity');
@@ -647,6 +648,11 @@ export function VoiceVideo({ requestClose }: { requestClose: () => void }) {
                     after={
                       <Switch value={noiseSuppression ?? true} onChange={setNoiseSuppression} />
                     }
+                  />
+                  <SettingTile
+                    title="Enhanced Noise Suppression (RNNoise)"
+                    description="Neural noise removal (open source) — much stronger than the standard suppression, which it replaces while active. Applies to your next call."
+                    after={<Switch value={rnnoise ?? false} onChange={setRnnoise} />}
                   />
                   <SettingTile
                     title="Echo Cancellation"
