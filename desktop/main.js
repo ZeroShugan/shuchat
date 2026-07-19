@@ -106,7 +106,9 @@ const configPath = () => path.join(app.getPath('userData'), 'config.json');
 function readConfig() {
   // closeAction: remembered choice for the X button — 'tray' | 'quit' | undefined.
   // When undefined the app asks each time (Minimize to Tray / Restart / Close).
-  const defaults = { serverUrl: DEFAULT_SERVER_URL, closeAction: undefined };
+  // autoStart: launch ShuChat when the user logs into Windows. Defaults to ON
+  // (owner request) — applied on first run, then whatever the user last chose.
+  const defaults = { serverUrl: DEFAULT_SERVER_URL, closeAction: undefined, autoStart: true };
   try {
     return { ...defaults, ...JSON.parse(fs.readFileSync(configPath(), 'utf8')) };
   } catch (e) {
@@ -744,8 +746,53 @@ function ensureUiohook() {
   return uio;
 }
 
+// ---- launch-at-login (Windows/macOS) ----
+// Electron writes the HKCU\...\Run entry on Windows; works with our per-user
+// (AppData\Local\Programs) install. Started minimized so logging in doesn't
+// throw a window in your face — the app lands in the tray.
+function applyAutoStart(enabled) {
+  if (process.platform === 'linux') return false; // no login-item API on Linux
+  try {
+    app.setLoginItemSettings({
+      openAtLogin: !!enabled,
+      openAsHidden: true,            // macOS
+      args: enabled ? ['--hidden'] : [],
+      path: process.execPath,
+    });
+    return true;
+  } catch (e) {
+    logMain(`setLoginItemSettings failed: ${e && e.message ? e.message : e}`);
+    return false;
+  }
+}
+
+function syncAutoStartFromConfig() {
+  const cfg = readConfig();
+  // Only enforce when packaged — running from source shouldn't register autostart.
+  if (!app.isPackaged) return;
+  applyAutoStart(cfg.autoStart !== false);
+}
+
 // ---- updater IPC for the in-app UI ----
 ipcMain.handle('shuchat-get-version', () => app.getVersion());
+ipcMain.handle('shuchat-get-autostart', () => {
+  if (process.platform === 'linux') return { supported: false, enabled: false };
+  const cfg = readConfig();
+  let actual = cfg.autoStart !== false;
+  try {
+    if (app.isPackaged) actual = !!app.getLoginItemSettings({ path: process.execPath }).openAtLogin;
+  } catch (e) {
+    /* fall back to stored value */
+  }
+  return { supported: true, enabled: actual };
+});
+ipcMain.handle('shuchat-set-autostart', (_evt, enabled) => {
+  const on = !!enabled;
+  writeConfig({ ...readConfig(), autoStart: on });
+  const ok = applyAutoStart(on);
+  logMain(`autostart ${on ? 'enabled' : 'disabled'} (applied=${ok})`);
+  return { supported: process.platform !== 'linux', enabled: on };
+});
 ipcMain.on('shuchat-check-updates', () => {
   if (autoUpdater && app.isPackaged) autoUpdater.checkForUpdates().catch(() => {});
   else sendUpdateState('none');
@@ -801,6 +848,10 @@ if (!gotLock) {
     } catch (e) {
       logMain(`powerSaveBlocker failed: ${e && e.message ? e.message : e}`);
     }
+    // Register/refresh the Windows login item to match the stored preference
+    // (default ON). Runs every launch so a reinstall/move of the exe re-points
+    // the Run entry at the current path.
+    syncAutoStartFromConfig();
     createWindow();
     // Pre-create the tray only if the user has chosen to keep the app in tray.
     if (readConfig().closeAction === 'tray') createTray();

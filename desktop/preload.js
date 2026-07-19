@@ -31,6 +31,9 @@ contextBridge.exposeInMainWorld('shuchatDesktop', {
   },
   checkForUpdates: () => ipcRenderer.send('shuchat-check-updates'),
   installUpdate: () => ipcRenderer.send('shuchat-install-update'),
+  // Launch ShuChat at Windows login (default ON; unsupported on Linux).
+  getAutoStart: () => ipcRenderer.invoke('shuchat-get-autostart'),
+  setAutoStart: (enabled) => ipcRenderer.invoke('shuchat-set-autostart', !!enabled),
   // Stream pop-out window controls (used by popout.html; no-ops elsewhere).
   popoutSetAlwaysOnTop: (flag) => ipcRenderer.send('popout:set-always-on-top', !!flag),
   popoutFocusMain: () => ipcRenderer.send('popout:focus-main'),
