@@ -50,6 +50,7 @@ import { useMessageLayoutItems } from '../../../hooks/useMessageLayout';
 import { useMessageSpacingItems } from '../../../hooks/useMessageSpacing';
 import { useDateFormatItems } from '../../../hooks/useDateFormat';
 import { SequenceCardStyle } from '../styles.css';
+import { getDesktop } from '../../../desktop';
 
 type ThemeSelectorProps = {
   themeNames: Record<string, string>;
@@ -300,6 +301,54 @@ function PageZoomInput() {
       after={<Text size="T300">%</Text>}
       outlined
     />
+  );
+}
+
+/**
+ * Desktop-app-only settings. Rendered only when running inside the Electron
+ * shell AND that shell exposes the API (older shells are feature-detected out).
+ */
+function DesktopApp() {
+  const desktop = getDesktop();
+  const supportsAutoStart = typeof desktop?.getAutoStart === 'function';
+  const [autoStart, setAutoStart] = useState<boolean | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!supportsAutoStart) return;
+    desktop?.getAutoStart?.().then((s) => setAutoStart(s.enabled)).catch(() => setAutoStart(undefined));
+  }, [desktop, supportsAutoStart]);
+
+  if (!supportsAutoStart || autoStart === undefined) return null;
+
+  const handleChange = (value: boolean) => {
+    setBusy(true);
+    setAutoStart(value); // optimistic
+    desktop
+      ?.setAutoStart?.(value)
+      .then((s) => setAutoStart(s.enabled))
+      .catch(() => setAutoStart(!value))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <Box direction="Column" gap="100">
+      <Text size="L400">Desktop App</Text>
+      <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
+        <SettingTile
+          title="Start with Windows"
+          description="Launch ShuChat automatically when you log in. It starts minimized to the tray, so calls and messages arrive without opening it yourself."
+          after={
+            <Switch
+              variant="Primary"
+              value={autoStart}
+              onChange={handleChange}
+              disabled={busy}
+            />
+          }
+        />
+      </SequenceCard>
+    </Box>
   );
 }
 
@@ -1002,6 +1051,7 @@ export function General({ requestClose }: GeneralProps) {
         <Scroll hideTrack visibility="Hover">
           <PageContent>
             <Box direction="Column" gap="700">
+              <DesktopApp />
               <Appearance />
               <DateAndTime />
               <Editor />

@@ -8,6 +8,8 @@ export type DesktopUpdateState = {
   current?: string; // running app version
 };
 
+export type DesktopAutoStart = { supported: boolean; enabled: boolean };
+
 export type ShuchatDesktop = {
   platform: string;
   getVersion: () => Promise<string>;
@@ -15,6 +17,9 @@ export type ShuchatDesktop = {
   onUpdateState: (cb: (s: DesktopUpdateState) => void) => () => void;
   checkForUpdates: () => void;
   installUpdate: () => void;
+  // Added in v0.9.21 — older shells lack these (callers must feature-detect).
+  getAutoStart?: () => Promise<DesktopAutoStart>;
+  setAutoStart?: (enabled: boolean) => Promise<DesktopAutoStart>;
 };
 
 export const getDesktop = (): ShuchatDesktop | undefined => {
