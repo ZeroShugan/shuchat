@@ -1,7 +1,7 @@
 // ShuChat desktop shell — loads the hosted web client in a native window.
 // Extras over the browser: tray, media permissions handled, and a TRUE global
 // push-to-talk (uiohook-napi) that works even when the window is unfocused.
-const { app, BrowserWindow, Tray, Menu, shell, ipcMain, session, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, shell, ipcMain, session, dialog, clipboard, nativeImage } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const { codeToUiohook } = require('./keymap');
@@ -611,7 +611,37 @@ function createWindow() {
     }
     if (params.mediaType === 'image') {
       if (items.length) items.push({ type: 'separator' });
-      items.push({ role: 'copyImage', label: 'Copy image' });
+      items.push({
+        label: 'Copy image',
+        // role:copyImage fails on blob:/E2EE images. Fetch the image in the page
+        // context (which can read its own blob URL), get a data URL, and write it
+        // to the OS clipboard here in main. Fall back to the built-in copy.
+        click: async () => {
+          try {
+            const src = params.srcURL;
+            const dataURL = await win.webContents.executeJavaScript(
+              '(async () => { try { const r = await fetch(' +
+                JSON.stringify(src) +
+                '); const b = await r.blob(); return await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(null); fr.readAsDataURL(b); }); } catch (e) { return null; } })()',
+              true
+            );
+            if (dataURL && typeof dataURL === 'string') {
+              const img = nativeImage.createFromDataURL(dataURL);
+              if (!img.isEmpty()) {
+                clipboard.writeImage(img);
+                return;
+              }
+            }
+          } catch (e) {
+            /* fall through to built-in */
+          }
+          try {
+            win.webContents.copyImageAt(params.x, params.y);
+          } catch (e) {
+            /* nothing to copy */
+          }
+        },
+      });
     }
     if (params.linkURL) {
       if (items.length) items.push({ type: 'separator' });
