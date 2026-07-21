@@ -1122,7 +1122,29 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   // Scroll to bottom on initial timeline load
   useLayoutEffect(() => {
     const scrollEl = scrollRef.current;
-    if (scrollEl) scrollToBottom(scrollEl);
+    if (!scrollEl) return undefined;
+    scrollToBottom(scrollEl);
+    // Cold-open fix: on first mount the virtualizer has not measured every row
+    // and media has not reserved its height yet, so this first scrollToBottom
+    // lands ~one row short of the true bottom. Re-assert on the next two frames
+    // once layout settles — but bail if another path (unread / focus scroll)
+    // has deliberately moved us well away from the bottom, so we never fight it.
+    let raf2 = 0;
+    const reassert = () => {
+      const el = scrollRef.current;
+      if (!el) return false;
+      const distBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+      if (distBottom > el.clientHeight * 1.5) return false;
+      scrollToBottom(el);
+      return true;
+    };
+    const raf1 = requestAnimationFrame(() => {
+      if (reassert()) raf2 = requestAnimationFrame(reassert);
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      if (raf2) cancelAnimationFrame(raf2);
+    };
   }, []);
 
   // if live timeline is linked and unreadInfo change
