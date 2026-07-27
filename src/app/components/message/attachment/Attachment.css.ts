@@ -41,6 +41,17 @@ export const AttachmentBox = style([
     maxHeight: toRem(600),
     width: toRem(400),
     overflow: 'hidden',
+    selectors: {
+      // Same exception as Attachment above: a text preview is for reading, so it
+      // gets the full message width. This box pins its own 400px independently
+      // of the outer card, so BOTH need the override or the card widens while
+      // the content inside stays narrow.
+      '&:has([data-shuchat-textpreview])': {
+        width: '100%',
+        // A source file needs more vertical room than a thumbnail.
+        maxHeight: 'none',
+      },
+    },
   },
 ]);
 
