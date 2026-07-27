@@ -24,6 +24,7 @@ import {
   UnsupportedContent,
   VideoContent,
 } from './message';
+import { InlineTextPreview } from './message/content/InlineTextPreview';
 import { EmbedPreview, getEmbedInfo, UrlPreviewCard, UrlPreviewHolder } from './url-preview';
 import { Image, MediaControl, Video } from './media';
 import { ImageViewer } from './image-viewer';
@@ -343,13 +344,24 @@ export function RenderMessageContent({
               />
             )}
             renderAsTextFile={() => (
-              <ReadTextFile
-                body={body}
-                mimeType={mimeType}
-                url={url}
-                encInfo={encInfo}
-                renderViewer={(p) => <TextViewer {...p} />}
-              />
+              <>
+                <ReadTextFile
+                  body={body}
+                  mimeType={mimeType}
+                  url={url}
+                  encInfo={encInfo}
+                  renderViewer={(p) => <TextViewer {...p} />}
+                />
+                {/* Inline scrollable preview + Copy button, Discord-style. The
+                    Open File modal above and Download below are unchanged. */}
+                <InlineTextPreview
+                  body={body}
+                  mimeType={mimeType}
+                  url={url}
+                  encInfo={encInfo}
+                  size={info?.size}
+                />
+              </>
             )}
           >
             <DownloadFile body={body} mimeType={mimeType} url={url} encInfo={encInfo} info={info} />
