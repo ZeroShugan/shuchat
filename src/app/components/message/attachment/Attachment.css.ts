@@ -10,6 +10,14 @@ export const Attachment = recipe({
     overflow: 'hidden',
     maxWidth: '100%',
     width: toRem(400),
+    selectors: {
+      // A text-file preview is meant to be read, so let it use the full width of
+      // the timeline like a normal message. Scoped with :has() so image/video/
+      // audio/pdf attachments keep the compact 400px card.
+      '&:has([data-shuchat-textpreview])': {
+        width: '100%',
+      },
+    },
   },
   variants: {
     outlined: {

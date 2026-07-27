@@ -134,7 +134,7 @@ export function InlineTextPreview({
   const shown = truncated ? full.slice(0, MAX_RENDER_CHARS) : full;
 
   return (
-    <Box className={css.InlinePreview} direction="Column">
+    <Box className={css.InlinePreview} direction="Column" data-shuchat-textpreview="">
       <Box className={css.InlinePreviewHeader} alignItems="Center" gap="200">
         <Box grow="Yes">
           <Text size="T200" priority="300" truncate>
