@@ -130,13 +130,16 @@ export const useBindRoomIdToTypingMembersAtom = (
 ) => {
   const setTypingMembers = useSetAtom(typingMembersAtom);
   const [hideActivity] = useSetting(settingsAtom, 'hideActivity');
+  const [hideTypingIndicator] = useSetting(settingsAtom, 'hideTypingIndicator');
 
   useEffect(() => {
     const handleTypingEvent: RoomMemberEventHandlerMap[RoomMemberEvent.Typing] = (
       event,
       member
     ) => {
-      if (hideActivity) {
+      // hideActivity = invisible mode; hideTypingIndicator = display-only.
+      // Existing entries self-expire via TYPING_TIMEOUT_MS, so no reset needed.
+      if (hideActivity || hideTypingIndicator) {
         return;
       }
       setTypingMembers({
@@ -151,5 +154,5 @@ export const useBindRoomIdToTypingMembersAtom = (
     return () => {
       mx.removeListener(RoomMemberEvent.Typing, handleTypingEvent);
     };
-  }, [mx, setTypingMembers, hideActivity]);
+  }, [mx, setTypingMembers, hideActivity, hideTypingIndicator]);
 };

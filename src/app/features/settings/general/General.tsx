@@ -759,7 +759,6 @@ function DateAndTime() {
 function Editor() {
   const [enterForNewline, setEnterForNewline] = useSetting(settingsAtom, 'enterForNewline');
   const [isMarkdown, setIsMarkdown] = useSetting(settingsAtom, 'isMarkdown');
-  const [hideActivity, setHideActivity] = useSetting(settingsAtom, 'hideActivity');
 
   return (
     <Box direction="Column" gap="100">
@@ -779,11 +778,38 @@ function Editor() {
           after={<Switch variant="Primary" value={isMarkdown} onChange={setIsMarkdown} />}
         />
       </SequenceCard>
+    </Box>
+  );
+}
+
+function Privacy() {
+  const [hideActivity, setHideActivity] = useSetting(settingsAtom, 'hideActivity');
+  const [hideTypingIndicator, setHideTypingIndicator] = useSetting(
+    settingsAtom,
+    'hideTypingIndicator'
+  );
+
+  return (
+    <Box direction="Column" gap="100">
+      <Text size="L400">Privacy</Text>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile
           title="Hide Typing & Read Receipts"
-          description="Turn off both typing status and read receipts to keep your activity private."
+          description="Invisible mode: don't tell others when you are typing or have read their messages. Their typing and read receipts are hidden from you too."
           after={<Switch variant="Primary" value={hideActivity} onChange={setHideActivity} />}
+        />
+      </SequenceCard>
+      <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
+        <SettingTile
+          title="Hide Typing Indicators"
+          description="Don't show the animated typing dots when other people are typing. Only changes what you see."
+          after={
+            <Switch
+              variant="Primary"
+              value={hideTypingIndicator}
+              onChange={setHideTypingIndicator}
+            />
+          }
         />
       </SequenceCard>
     </Box>
@@ -1055,6 +1081,7 @@ export function General({ requestClose }: GeneralProps) {
               <Appearance />
               <DateAndTime />
               <Editor />
+              <Privacy />
               <Messages />
             </Box>
           </PageContent>

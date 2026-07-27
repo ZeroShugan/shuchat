@@ -21,6 +21,7 @@ export interface Settings {
   twitterEmoji: boolean;
   pageZoom: number;
   hideActivity: boolean;
+  hideTypingIndicator: boolean; // display-only: hide others' typing dots
 
   isPeopleDrawer: boolean;
   memberSortFilterIndex: number;
@@ -88,6 +89,7 @@ const defaultSettings: Settings = {
   twitterEmoji: false,
   pageZoom: 100,
   hideActivity: false,
+  hideTypingIndicator: false,
 
   isPeopleDrawer: true,
   memberSortFilterIndex: 0,

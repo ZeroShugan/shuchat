@@ -79,6 +79,7 @@ export function SettingsSearch({ query, setQuery, onOpenPage }: SettingsSearchPr
     () => [
       // ── General ──
       { id: 'invisible', label: 'Hide Typing & Read Receipts', keywords: 'invisible mode privacy typing read receipt activity hide', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'hideActivity' },
+      { id: 'hidetypingdots', label: 'Hide Typing Indicators', keywords: 'typing dots animation indicator hide privacy', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'hideTypingIndicator' },
       { id: 'markdown', label: 'Markdown Formatting', keywords: 'format text bold italic markdown', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'isMarkdown' },
       { id: 'toolbar', label: 'Editor Toolbar', keywords: 'formatting toolbar compose', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'editorToolbar' },
       { id: 'twemoji', label: 'Twitter Emoji', keywords: 'twemoji emoji style', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'twitterEmoji' },
