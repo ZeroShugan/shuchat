@@ -40,9 +40,9 @@ export const Blur = style([
 ]);
 
 // ── Inline text-file preview (ShuChat addition) ──────────────────────────────
-// A small scrollable window showing a text attachment's contents in the
-// timeline, with a Copy button in the header. Sits next to the existing
-// Open File / Download buttons rather than replacing them.
+// A scrollable window showing a text attachment's contents in the timeline.
+// Copy / Open File / Download all live in the header row. The body reuses the
+// modal viewer's Prism markup, so highlighting matches "Open File" exactly.
 
 export const InlinePreview = style([
   DefaultReset,
@@ -52,6 +52,7 @@ export const InlinePreview = style([
     borderRadius: config.radii.R400,
     border: `${config.borderWidth.B300} solid ${color.SurfaceVariant.ContainerLine}`,
     backgroundColor: color.SurfaceVariant.Container,
+    color: color.SurfaceVariant.OnContainer,
     overflow: 'hidden',
   },
 ]);
@@ -62,31 +63,43 @@ export const InlinePreviewHeader = style([
     padding: `${config.space.S100} ${config.space.S200}`,
     borderBottom: `${config.borderWidth.B300} solid ${color.SurfaceVariant.ContainerLine}`,
     backgroundColor: color.SurfaceVariant.Container,
-    // Keep the Copy button reachable while the body scrolls under it.
+    // Keep the action row reachable while the body scrolls under it.
     position: 'sticky',
     top: 0,
     zIndex: 1,
   },
 ]);
 
-export const InlinePreviewBody = style([
+// The scrollable window itself. folds' <Scroll> owns the scrollbar styling, so
+// the bar matches the active ShuChat theme instead of the browser default.
+// resize:vertical lets the reader drag it taller for a long file.
+export const InlinePreviewScroll = style([
+  DefaultReset,
+  {
+    maxHeight: '320px',
+    minHeight: '48px',
+    resize: 'vertical',
+  },
+]);
+
+export const InlinePreviewPre = style([
   DefaultReset,
   {
     margin: 0,
     padding: config.space.S200,
-    // The scrollable window itself. resize:vertical lets the reader drag it
-    // taller for a long file without needing the full modal.
-    maxHeight: '240px',
-    minHeight: '48px',
-    overflow: 'auto',
-    resize: 'vertical',
     fontFamily: 'monospace',
-    fontSize: '0.8125rem',
     lineHeight: 1.5,
     // Long log lines must wrap instead of forcing the timeline sideways.
     whiteSpace: 'pre-wrap',
     wordBreak: 'break-word',
-    color: color.SurfaceVariant.OnContainer,
+  },
+]);
+
+// Loading / error / "show preview" placeholder shown in place of the body.
+export const InlinePreviewState = style([
+  DefaultReset,
+  {
+    padding: config.space.S200,
   },
 ]);
 
@@ -95,16 +108,5 @@ export const InlinePreviewFooter = style([
   {
     padding: `${config.space.S100} ${config.space.S200}`,
     borderTop: `${config.borderWidth.B300} solid ${color.SurfaceVariant.ContainerLine}`,
-  },
-]);
-
-export const InlinePreviewNotice = style([
-  DefaultReset,
-  {
-    marginTop: config.space.S200,
-    padding: `${config.space.S100} ${config.space.S200}`,
-    borderRadius: config.radii.R400,
-    border: `${config.borderWidth.B300} solid ${color.SurfaceVariant.ContainerLine}`,
-    backgroundColor: color.SurfaceVariant.Container,
   },
 ]);
