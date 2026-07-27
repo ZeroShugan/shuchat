@@ -2,6 +2,7 @@ import React, { ReactNode, useCallback, useState } from 'react';
 import {
   Box,
   Button,
+  Chip,
   Icon,
   Icons,
   Modal,
@@ -36,6 +37,12 @@ import {
 } from '../../../utils/matrix';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { ModalWide } from '../../../styles/Modal.css';
+
+/** Does Cinny treat this attachment as readable text? Exported because callers
+ *  need the same answer to decide where the file's action buttons belong. */
+export const isReadableTextFile = (body: string, mimeType: string): boolean =>
+  READABLE_TEXT_MIME_TYPES.includes(mimeType) ||
+  Boolean(READABLE_EXT_TO_MIME_TYPE[getFileNameExt(body)]);
 
 const renderErrorButton = (retry: () => void, text: string) => (
   <TooltipProvider
@@ -78,8 +85,18 @@ type ReadTextFileProps = {
   url: string;
   encInfo?: EncryptedAttachmentInfo;
   renderViewer: (props: RenderTextViewerProps) => ReactNode;
+  /** Render as a pill chip instead of a full-width button, for use inside the
+   *  inline preview's header row alongside Copy. */
+  compact?: boolean;
 };
-export function ReadTextFile({ body, mimeType, url, encInfo, renderViewer }: ReadTextFileProps) {
+export function ReadTextFile({
+  body,
+  mimeType,
+  url,
+  encInfo,
+  renderViewer,
+  compact,
+}: ReadTextFileProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
   const [textViewer, setTextViewer] = useState(false);
@@ -97,6 +114,53 @@ export function ReadTextFile({ body, mimeType, url, encInfo, renderViewer }: Rea
       return text;
     }, [mx, useAuthentication, mimeType, encInfo, url])
   );
+
+  const loading = textState.status === AsyncStatus.Loading;
+  const handleOpen = () =>
+    textState.status === AsyncStatus.Success ? setTextViewer(true) : loadText();
+
+  const renderTrigger = () => {
+    if (textState.status === AsyncStatus.Error) return renderErrorButton(loadText, 'Open File');
+    if (compact)
+      return (
+        <Chip
+          variant="Secondary"
+          radii="Pill"
+          onClick={handleOpen}
+          disabled={loading}
+          before={
+            loading ? (
+              <Spinner size="100" variant="Secondary" />
+            ) : (
+              <Icon size="50" src={Icons.ArrowRight} filled />
+            )
+          }
+        >
+          <Text size="B300">Open File</Text>
+        </Chip>
+      );
+    return (
+      <Button
+        variant="Secondary"
+        fill="Solid"
+        radii="300"
+        size="400"
+        onClick={handleOpen}
+        disabled={loading}
+        before={
+          loading ? (
+            <Spinner fill="Solid" size="100" variant="Secondary" />
+          ) : (
+            <Icon size="100" src={Icons.ArrowRight} filled />
+          )
+        }
+      >
+        <Text size="B400" truncate>
+          Open File
+        </Text>
+      </Button>
+    );
+  };
 
   return (
     <>
@@ -129,31 +193,7 @@ export function ReadTextFile({ body, mimeType, url, encInfo, renderViewer }: Rea
           </OverlayCenter>
         </Overlay>
       )}
-      {textState.status === AsyncStatus.Error ? (
-        renderErrorButton(loadText, 'Open File')
-      ) : (
-        <Button
-          variant="Secondary"
-          fill="Solid"
-          radii="300"
-          size="400"
-          onClick={() =>
-            textState.status === AsyncStatus.Success ? setTextViewer(true) : loadText()
-          }
-          disabled={textState.status === AsyncStatus.Loading}
-          before={
-            textState.status === AsyncStatus.Loading ? (
-              <Spinner fill="Solid" size="100" variant="Secondary" />
-            ) : (
-              <Icon size="100" src={Icons.ArrowRight} filled />
-            )
-          }
-        >
-          <Text size="B400" truncate>
-            Open File
-          </Text>
-        </Button>
-      )}
+      {renderTrigger()}
     </>
   );
 }
@@ -248,8 +288,17 @@ export type DownloadFileProps = {
   url: string;
   info: IFileInfo;
   encInfo?: EncryptedAttachmentInfo;
+  /** Render as a pill chip instead of a full-width button — see ReadTextFile. */
+  compact?: boolean;
 };
-export function DownloadFile({ body, mimeType, url, info, encInfo }: DownloadFileProps) {
+export function DownloadFile({
+  body,
+  mimeType,
+  url,
+  info,
+  encInfo,
+  compact,
+}: DownloadFileProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
 
@@ -267,29 +316,56 @@ export function DownloadFile({ body, mimeType, url, info, encInfo }: DownloadFil
     }, [mx, url, useAuthentication, mimeType, encInfo, body])
   );
 
-  return downloadState.status === AsyncStatus.Error ? (
-    renderErrorButton(download, `Retry Download (${bytesToSize(info.size ?? 0)})`)
-  ) : (
+  const loading = downloadState.status === AsyncStatus.Loading;
+  const label = `Download (${bytesToSize(info.size ?? 0)})`;
+  const handleDownload = () =>
+    downloadState.status === AsyncStatus.Success
+      ? FileSaver.saveAs(downloadState.data, body)
+      : download();
+
+  if (downloadState.status === AsyncStatus.Error) {
+    return renderErrorButton(download, `Retry ${label}`);
+  }
+
+  if (compact) {
+    return (
+      <Chip
+        variant="Secondary"
+        radii="Pill"
+        onClick={handleDownload}
+        disabled={loading}
+        before={
+          loading ? (
+            <Spinner size="100" variant="Secondary" />
+          ) : (
+            <Icon size="50" src={Icons.Download} filled />
+          )
+        }
+      >
+        <Text size="B300">{label}</Text>
+      </Chip>
+    );
+  }
+
+  return (
     <Button
       variant="Secondary"
       fill="Soft"
       radii="300"
       size="400"
-      onClick={() =>
-        downloadState.status === AsyncStatus.Success
-          ? FileSaver.saveAs(downloadState.data, body)
-          : download()
-      }
-      disabled={downloadState.status === AsyncStatus.Loading}
+      onClick={handleDownload}
+      disabled={loading}
       before={
-        downloadState.status === AsyncStatus.Loading ? (
+        loading ? (
           <Spinner fill="Soft" size="100" variant="Secondary" />
         ) : (
           <Icon size="100" src={Icons.Download} filled />
         )
       }
     >
-      <Text size="B400" truncate>{`Download (${bytesToSize(info.size ?? 0)})`}</Text>
+      <Text size="B400" truncate>
+        {label}
+      </Text>
     </Button>
   );
 }
@@ -303,9 +379,7 @@ type FileContentProps = {
 export const FileContent = as<'div', FileContentProps>(
   ({ body, mimeType, renderAsTextFile, renderAsPdfFile, children, ...props }, ref) => (
     <Box direction="Column" gap="300" {...props} ref={ref}>
-      {(READABLE_TEXT_MIME_TYPES.includes(mimeType) ||
-        READABLE_EXT_TO_MIME_TYPE[getFileNameExt(body)]) &&
-        renderAsTextFile()}
+      {isReadableTextFile(body, mimeType) && renderAsTextFile()}
       {mimeType === 'application/pdf' && renderAsPdfFile()}
       {children}
     </Box>

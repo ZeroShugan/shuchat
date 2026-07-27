@@ -19,6 +19,7 @@ import {
   MVideo,
   ReadPdfFile,
   ReadTextFile,
+  isReadableTextFile,
   RenderBody,
   ThumbnailContent,
   UnsupportedContent,
@@ -330,43 +331,66 @@ export function RenderMessageContent({
     <>
       <MFile
         content={getContent()}
-        renderFileContent={({ body, mimeType, info, encInfo, url }) => (
-          <FileContent
-            body={body}
-            mimeType={mimeType}
-            renderAsPdfFile={() => (
-              <ReadPdfFile
-                body={body}
-                mimeType={mimeType}
-                url={url}
-                encInfo={encInfo}
-                renderViewer={(p) => <PdfViewer {...p} />}
-              />
-            )}
-            renderAsTextFile={() => (
-              <>
-                <ReadTextFile
+        renderFileContent={({ body, mimeType, info, encInfo, url }) => {
+          // For readable text files the inline preview owns the whole card:
+          // Open File and Download move into its header as chips next to Copy,
+          // instead of sitting as full-width buttons above and below the box.
+          const textFile = isReadableTextFile(body, mimeType);
+          return (
+            <FileContent
+              body={body}
+              mimeType={mimeType}
+              renderAsPdfFile={() => (
+                <ReadPdfFile
                   body={body}
                   mimeType={mimeType}
                   url={url}
                   encInfo={encInfo}
-                  renderViewer={(p) => <TextViewer {...p} />}
+                  renderViewer={(p) => <PdfViewer {...p} />}
                 />
-                {/* Inline scrollable preview + Copy button, Discord-style. The
-                    Open File modal above and Download below are unchanged. */}
+              )}
+              renderAsTextFile={() => (
                 <InlineTextPreview
                   body={body}
                   mimeType={mimeType}
                   url={url}
                   encInfo={encInfo}
                   size={info?.size}
+                  actions={
+                    <>
+                      <ReadTextFile
+                        compact
+                        body={body}
+                        mimeType={mimeType}
+                        url={url}
+                        encInfo={encInfo}
+                        renderViewer={(p) => <TextViewer {...p} />}
+                      />
+                      <DownloadFile
+                        compact
+                        body={body}
+                        mimeType={mimeType}
+                        url={url}
+                        encInfo={encInfo}
+                        info={info}
+                      />
+                    </>
+                  }
                 />
-              </>
-            )}
-          >
-            <DownloadFile body={body} mimeType={mimeType} url={url} encInfo={encInfo} info={info} />
-          </FileContent>
-        )}
+              )}
+            >
+              {!textFile && (
+                <DownloadFile
+                  body={body}
+                  mimeType={mimeType}
+                  url={url}
+                  encInfo={encInfo}
+                  info={info}
+                />
+              )}
+            </FileContent>
+          );
+        }}
         outlined={outlineAttachment}
       />
       {renderCaption()}
