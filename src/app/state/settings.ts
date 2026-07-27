@@ -31,6 +31,8 @@ export interface Settings {
   hideNickAvatarEvents: boolean;
   mediaAutoLoad: boolean;
   urlPreview: boolean;
+  /** Strip tracking params (utm_*, fbclid, si, …) from URLs in messages YOU send. */
+  clearUrls: boolean;
   encUrlPreview: boolean;
   showHiddenEvents: boolean;
   legacyUsernameColor: boolean;
@@ -98,6 +100,7 @@ const defaultSettings: Settings = {
   hideNickAvatarEvents: true,
   mediaAutoLoad: true,
   urlPreview: true,
+  clearUrls: false,
   encUrlPreview: false,
   showHiddenEvents: false,
   legacyUsernameColor: false,

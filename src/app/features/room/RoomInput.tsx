@@ -90,6 +90,7 @@ import {
   createUploadFamilyObserverAtom,
 } from '../../state/upload';
 import { getImageUrlBlob, loadImageElement } from '../../utils/dom';
+import { cleanTextBody, cleanFormattedBody } from '../../utils/clearUrls';
 import { safeFile } from '../../utils/mimeTypes';
 import { fulfilledPromiseSettledResult } from '../../utils/common';
 import { useSetting } from '../../state/hooks/settings';
@@ -141,6 +142,8 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
     const creators = useRoomCreators(room);
 
     const [msgDraft, setMsgDraft] = useAtom(roomIdToMsgDraftAtomFamily(roomId));
+  // ClearURLs: strip tracking params from links in messages we send (opt-in).
+  const [clearUrlsEnabled] = useSetting(settingsAtom, 'clearUrls');
     const [replyDraft, setReplyDraft] = useAtom(roomIdToReplyDraftAtomFamily(roomId));
     const replyUserID = replyDraft?.userId;
 
@@ -358,8 +361,11 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
 
       if (plainText === '') return;
 
-      const body = plainText;
-      const formattedBody = customHtml;
+      // ClearURLs (opt-in, Settings > General): remove tracking params from any
+      // links we are about to send. Applied to BOTH the plain body and the HTML
+      // so the visible text and the href can never disagree.
+      const body = clearUrlsEnabled ? cleanTextBody(plainText) : plainText;
+      const formattedBody = clearUrlsEnabled ? cleanFormattedBody(customHtml) : customHtml;
       const mentionData = getMentions(mx, roomId, editor);
 
       const content: IContent = {
@@ -395,7 +401,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
       resetEditorHistory(editor);
       setReplyDraft(undefined);
       sendTypingStatus(false);
-    }, [mx, roomId, editor, replyDraft, sendTypingStatus, setReplyDraft, isMarkdown, commands]);
+    }, [mx, roomId, editor, replyDraft, sendTypingStatus, setReplyDraft, isMarkdown, commands, clearUrlsEnabled]);
 
     const handleKeyDown: KeyboardEventHandler = useCallback(
       (evt) => {

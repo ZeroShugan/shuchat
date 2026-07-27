@@ -85,6 +85,7 @@ export function SettingsSearch({ query, setQuery, onOpenPage }: SettingsSearchPr
       { id: 'clock24', label: '24 Hour Clock', keywords: 'time format 24 hour am pm clock', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'hour24Clock' },
       { id: 'mediaautoload', label: 'Media Auto Load', keywords: 'images video auto load download', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'mediaAutoLoad' },
       { id: 'urlpreview', label: 'Url Preview', keywords: 'link preview embed', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'urlPreview' },
+      { id: 'clearurls', label: 'Clear URLs', keywords: 'tracking utm fbclid privacy links clean urls', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'clearUrls' },
       { id: 'encurlpreview', label: 'Url Preview in Encrypted Rooms', keywords: 'link preview embed encrypted', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'encUrlPreview' },
       { id: 'hidemembership', label: 'Hide Membership Events', keywords: 'join leave membership events timeline', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'hideMembershipEvents' },
       { id: 'hidenickavatar', label: 'Hide Nick/Avatar Events', keywords: 'nick avatar change events timeline', page: SettingsPages.GeneralPage, pageName: 'General', kind: 'bool', settingKey: 'hideNickAvatarEvents' },
