@@ -945,7 +945,6 @@ function Messages() {
   const [urlPreview, setUrlPreview] = useSetting(settingsAtom, 'urlPreview');
   const [encUrlPreview, setEncUrlPreview] = useSetting(settingsAtom, 'encUrlPreview');
   const [showHiddenEvents, setShowHiddenEvents] = useSetting(settingsAtom, 'showHiddenEvents');
-  const [clearUrls, setClearUrls] = useSetting(settingsAtom, 'clearUrls');
 
   return (
     <Box direction="Column" gap="100">
@@ -1014,13 +1013,6 @@ function Messages() {
         <SettingTile
           title="Url Preview in Encrypted Room"
           after={<Switch variant="Primary" value={encUrlPreview} onChange={setEncUrlPreview} />}
-        />
-      </SequenceCard>
-      <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
-        <SettingTile
-          title="Clear URLs"
-          description="Automatically remove tracking parameters (utm_*, fbclid, si, …) from links in messages you send. Only affects your outgoing messages."
-          after={<Switch variant="Primary" value={clearUrls} onChange={setClearUrls} />}
         />
       </SequenceCard>
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
