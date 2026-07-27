@@ -38,6 +38,7 @@ export interface Settings {
 
   showNotifications: boolean;
   isNotificationSounds: boolean;
+  removalNotifications: boolean; // alert on kick/ban or a DM partner leaving
   notificationVolume: number;  // app UI sounds 0.0–1.0
   mediaVolume: number;          // chat audio/video default 0.0–1.0 (0.5 = 50%)
   voiceVolume: number;          // call voice 0.0–1.0
@@ -106,6 +107,7 @@ const defaultSettings: Settings = {
 
   showNotifications: true,
   isNotificationSounds: true,
+  removalNotifications: false,
   notificationVolume: 0.5,
   mediaVolume: 0.5,
   voiceVolume: 0.5,

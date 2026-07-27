@@ -97,6 +97,10 @@ export function SystemNotification() {
     'notificationVolume'
   );
   const [mediaVolume, setMediaVolume] = useSetting(settingsAtom, 'mediaVolume');
+  const [removalNotifications, setRemovalNotifications] = useSetting(
+    settingsAtom,
+    'removalNotifications'
+  );
   const [voiceVolume, setVoiceVolume] = useSetting(settingsAtom, 'voiceVolume');
 
   const requestNotificationPermission = () => {
@@ -174,6 +178,18 @@ export function SystemNotification() {
             <RangeSlider min={0} max={1} step={0.05}
               value={mediaVolume ?? 0.5} onChange={setMediaVolume} />
           }
+        />
+      </SequenceCard>
+      <SequenceCard
+        className={SequenceCardStyle}
+        variant="SurfaceVariant"
+        direction="Column"
+        gap="400"
+      >
+        <SettingTile
+          title="Removal Alerts"
+          description="Alert when you are removed or banned from a room, group or space, or when someone leaves one of your direct chats — including while you were offline."
+          after={<Switch value={removalNotifications} onChange={setRemovalNotifications} />}
         />
       </SequenceCard>
       <SequenceCard

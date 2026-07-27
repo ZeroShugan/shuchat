@@ -1,7 +1,16 @@
 import { useAtomValue } from 'jotai';
 import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RoomEvent, RoomEventHandlerMap, ClientEvent, SetPresence, UserEvent } from 'matrix-js-sdk';
+import {
+  ClientEvent,
+  Room,
+  RoomEvent,
+  RoomEventHandlerMap,
+  RoomMemberEvent,
+  RoomMemberEventHandlerMap,
+  SetPresence,
+  UserEvent,
+} from 'matrix-js-sdk';
 import { AllDevicesIsolationMode, OnlySignedDevicesIsolationMode } from 'matrix-js-sdk/lib/crypto-api';
 import { roomToUnreadAtom, unreadEqual, unreadInfoToUnread } from '../../state/room/roomToUnread';
 import LogoSVG from '../../../../public/res/svg/cinny.svg';
@@ -13,6 +22,7 @@ import { notificationPermission, setFavicon } from '../../utils/dom';
 import { useSetting } from '../../state/hooks/settings';
 import { settingsAtom } from '../../state/settings';
 import { allInvitesAtom } from '../../state/room-list/inviteList';
+import { mDirectAtom } from '../../state/mDirectList';
 import { usePreviousValue } from '../../hooks/usePreviousValue';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { getInboxInvitesPath, getInboxNotificationsPath } from '../pathUtils';
@@ -262,6 +272,216 @@ function MessageNotifications() {
 
 
 
+const REMOVAL_NOTIFIER_TS_KEY = 'shuchat-removal-notifier-ts';
+
+type RemovalNotice = { key: string; ts: number; title: string; body: string };
+
+/**
+ * Relationship notifier (ShuChat addition) — tells you when you are removed:
+ *  - kicked or banned from a room, group chat or space
+ *  - the other person leaving one of your direct chats
+ *
+ * Works live and via a catch-up scan on startup, so removals that happened
+ * while the app was closed are reported too. A localStorage watermark keeps
+ * the scan from replaying history: only events newer than the last run fire,
+ * and the first enable starts watching from "now".
+ *
+ * Off by default — Settings → Notifications → Removal Alerts.
+ */
+function RemovalNotifications() {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const notifiedRef = useRef<Set<string>>(new Set());
+  const mx = useMatrixClient();
+  const mDirects = useAtomValue(mDirectAtom);
+  const [removalNotifications] = useSetting(settingsAtom, 'removalNotifications');
+  const [showNotifications] = useSetting(settingsAtom, 'showNotifications');
+  const [notificationSound] = useSetting(settingsAtom, 'isNotificationSounds');
+  const [notificationVolume] = useSetting(settingsAtom, 'notificationVolume');
+
+  const notify = useCallback(
+    (title: string, body: string) => {
+      if (showNotifications && notificationPermission('granted')) {
+        const noti = new window.Notification(title, {
+          icon: LogoSVG,
+          badge: LogoSVG,
+          body,
+          silent: true,
+        });
+        noti.onclick = () => noti.close();
+      }
+      if (notificationSound) {
+        const audioElement = audioRef.current;
+        if (audioElement) {
+          audioElement.volume = notificationVolume;
+          audioElement.play();
+        }
+      }
+    },
+    [showNotifications, notificationSound, notificationVolume]
+  );
+
+  const bumpWatermark = useCallback((ts: number) => {
+    const current = Number(localStorage.getItem(REMOVAL_NOTIFIER_TS_KEY) ?? '0');
+    if (ts > current) localStorage.setItem(REMOVAL_NOTIFIER_TS_KEY, String(ts));
+  }, []);
+
+  // You were kicked/banned: our own member event, sent by someone else.
+  const describeRemoval = useCallback(
+    (room: Room): RemovalNotice | undefined => {
+      const myUserId = mx.getUserId();
+      if (!myUserId) return undefined;
+      const memberEvent = room.getMember(myUserId)?.events.member;
+      const sender = memberEvent?.getSender();
+      if (!memberEvent || !sender || sender === myUserId) return undefined; // we left on our own
+      const membership = memberEvent.getContent().membership;
+      if (membership !== 'leave' && membership !== 'ban') return undefined;
+      const senderName = getMemberDisplayName(room, sender) ?? getMxIdLocalPart(sender) ?? sender;
+      const { reason } = memberEvent.getContent();
+      let kind = 'room';
+      if (room.isSpaceRoom()) kind = 'space';
+      else if (mDirects.has(room.roomId)) kind = 'direct chat';
+      const verb = membership === 'ban' ? 'banned' : 'removed';
+      return {
+        key: `${room.roomId}:${memberEvent.getId()}`,
+        ts: memberEvent.getTs(),
+        title: room.name || 'Unknown room',
+        body: `You were ${verb} from this ${kind} by ${senderName}${
+          reason ? ` — "${reason}"` : ''
+        }.`,
+      };
+    },
+    [mx, mDirects]
+  );
+
+  // The other person left one of your direct chats on their own.
+  const describeDirectLeaves = useCallback(
+    (room: Room): RemovalNotice[] => {
+      const myUserId = mx.getUserId();
+      if (!myUserId) return [];
+      if (!mDirects.has(room.roomId) || room.getMyMembership() !== 'join') return [];
+      const notices: RemovalNotice[] = [];
+      room.getMembers().forEach((member) => {
+        if (member.userId === myUserId || member.membership !== 'leave') return;
+        const memberEvent = member.events.member;
+        if (!memberEvent || memberEvent.getSender() !== member.userId) return;
+        const name =
+          getMemberDisplayName(room, member.userId) ?? getMxIdLocalPart(member.userId) ?? member.userId;
+        notices.push({
+          key: `${room.roomId}:${memberEvent.getId()}`,
+          ts: memberEvent.getTs(),
+          title: name,
+          body: `${name} left your direct chat.`,
+        });
+      });
+      return notices;
+    },
+    [mx, mDirects]
+  );
+
+  useEffect(() => {
+    if (!removalNotifications) return undefined;
+
+    const emit = (notice: RemovalNotice) => {
+      if (notifiedRef.current.has(notice.key)) return;
+      notifiedRef.current.add(notice.key);
+      bumpWatermark(notice.ts);
+      notify(notice.title, notice.body);
+    };
+
+    // Catch-up: removals that happened while the app was closed.
+    const scan = () => {
+      const raw = localStorage.getItem(REMOVAL_NOTIFIER_TS_KEY);
+      if (raw === null) {
+        // First enable — start watching from now instead of replaying history.
+        localStorage.setItem(REMOVAL_NOTIFIER_TS_KEY, String(Date.now()));
+        return;
+      }
+      const watermark = Number(raw);
+      const found: RemovalNotice[] = [];
+      mx.getRooms().forEach((room) => {
+        const membership = room.getMyMembership();
+        if (membership === 'leave' || membership === 'ban') {
+          const notice = describeRemoval(room);
+          if (notice && notice.ts > watermark && !notifiedRef.current.has(notice.key)) {
+            found.push(notice);
+          }
+        } else if (membership === 'join') {
+          describeDirectLeaves(room).forEach((notice) => {
+            if (notice.ts > watermark && !notifiedRef.current.has(notice.key)) {
+              found.push(notice);
+            }
+          });
+        }
+      });
+      // Oldest first, capped so a long absence cannot flood the screen.
+      found
+        .sort((a, b) => a.ts - b.ts)
+        .slice(-8)
+        .forEach(emit);
+      bumpWatermark(Date.now());
+    };
+
+    const syncState = mx.getSyncState();
+    if (syncState === 'PREPARED' || syncState === 'SYNCING') scan();
+    const handleSync = (state: string | null) => {
+      if (state === 'PREPARED') scan();
+    };
+    mx.on(ClientEvent.Sync, handleSync as any);
+
+    const handleMyMembership: RoomEventHandlerMap[RoomEvent.MyMembership] = (room, membership) => {
+      if (mx.getSyncState() !== 'SYNCING') return;
+      if (membership !== 'leave' && membership !== 'ban') return;
+      const notice = describeRemoval(room);
+      if (notice) emit(notice);
+    };
+    mx.on(RoomEvent.MyMembership, handleMyMembership);
+
+    const handleMembership: RoomMemberEventHandlerMap[RoomMemberEvent.Membership] = (
+      event,
+      member
+    ) => {
+      if (mx.getSyncState() !== 'SYNCING') return;
+      const myUserId = mx.getUserId();
+      if (!myUserId || member.userId === myUserId) return;
+      if (member.membership !== 'leave') return;
+      if (!mDirects.has(member.roomId)) return;
+      if (event.getSender() !== member.userId) return; // kicked by someone else — not them leaving us
+      const room = mx.getRoom(member.roomId);
+      if (!room || room.getMyMembership() !== 'join') return;
+      const name =
+        getMemberDisplayName(room, member.userId) ?? getMxIdLocalPart(member.userId) ?? member.userId;
+      emit({
+        key: `${member.roomId}:${event.getId()}`,
+        ts: event.getTs(),
+        title: name,
+        body: `${name} left your direct chat.`,
+      });
+    };
+    mx.on(RoomMemberEvent.Membership, handleMembership);
+
+    return () => {
+      mx.removeListener(ClientEvent.Sync, handleSync as any);
+      mx.removeListener(RoomEvent.MyMembership, handleMyMembership);
+      mx.removeListener(RoomMemberEvent.Membership, handleMembership);
+    };
+  }, [
+    mx,
+    mDirects,
+    removalNotifications,
+    describeRemoval,
+    describeDirectLeaves,
+    notify,
+    bumpWatermark,
+  ]);
+
+  return (
+    // eslint-disable-next-line jsx-a11y/media-has-caption
+    <audio ref={audioRef} style={{ display: 'none' }}>
+      <source src={NotificationSound} type="audio/ogg" />
+    </audio>
+  );
+}
+
 /**
  * Applies the user's stored device-isolation-mode preference every time the
  * Matrix crypto module is available. The SDK does not persist this setting,
@@ -375,6 +595,7 @@ export function ClientNonUIFeatures({ children }: ClientNonUIFeaturesProps) {
       <FaviconUpdater />
       <InviteNotifications />
       <MessageNotifications />
+      <RemovalNotifications />
       {children}
     </>
   );

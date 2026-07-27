@@ -96,6 +96,7 @@ export function SettingsSearch({ query, setQuery, onOpenPage }: SettingsSearchPr
       // ── Notifications ──
       { id: 'desktopnotif', label: 'Desktop Notifications', keywords: 'desktop notifications popup', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'bool', settingKey: 'showNotifications' },
       { id: 'notifsound', label: 'Notification Sounds', keywords: 'notification sound audio', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'bool', settingKey: 'isNotificationSounds' },
+      { id: 'removalalerts', label: 'Removal Alerts', keywords: 'kick ban removed friend left unfriend relationship alert notify', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'bool', settingKey: 'removalNotifications' },
       { id: 'appvol', label: 'App Sounds Volume', keywords: 'notification volume app sound ring', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'notificationVolume', def: 0.5 },
       { id: 'voicevol', label: 'Voice Volume', keywords: 'voice call volume people speaking', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'voiceVolume', def: 0.5 },
       { id: 'mediavol', label: 'Media Volume', keywords: 'media audio video volume', page: SettingsPages.NotificationPage, pageName: 'Notifications', kind: 'volume', settingKey: 'mediaVolume', def: 0.5 },
