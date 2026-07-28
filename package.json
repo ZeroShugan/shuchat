@@ -18,7 +18,8 @@
     "typecheck": "tsc --noEmit",
     "prepare": "husky install",
     "commit": "git-cz",
-    "semantic-release": "semantic-release"
+    "semantic-release": "semantic-release",
+    "test": "vitest run"
   },
   "lint-staged": {
     "*.{ts,tsx,js,jsx}": "eslint",
@@ -149,6 +150,7 @@
     "eslint-plugin-react": "7.31.11",
     "eslint-plugin-react-hooks": "4.6.0",
     "husky": "9.1.7",
+    "jsdom": "29.1.1",
     "lint-staged": "16.3.2",
     "prettier": "2.8.1",
     "semantic-release": "25.0.3",
@@ -156,6 +158,7 @@
     "vite": "5.4.19",
     "vite-plugin-pwa": "0.20.5",
     "vite-plugin-static-copy": "1.0.4",
-    "vite-plugin-top-level-await": "1.4.4"
+    "vite-plugin-top-level-await": "1.4.4",
+    "vitest": "4.1.10"
   }
 }
