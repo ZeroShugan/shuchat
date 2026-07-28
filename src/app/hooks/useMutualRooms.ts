@@ -18,15 +18,19 @@ const UNSTABLE_FLAGS = [
 ];
 
 export const useMutualRoomsSupport = (): boolean => {
-  const { unstable_features: unstableFeatures } = useSpecVersions();
+  const { unstable_features: unstableFeatures, versions } = useSpecVersions();
   const supported =
-    !!unstableFeatures?.[STABLE_FLAG] || UNSTABLE_FLAGS.some((f) => !!unstableFeatures?.[f]);
+    versions.includes('v1.19') ||
+    !!unstableFeatures?.[STABLE_FLAG] ||
+    UNSTABLE_FLAGS.some((f) => !!unstableFeatures?.[f]);
   return supported;
 };
 
 const useMutualRoomsStable = (): boolean => {
-  const { unstable_features: unstableFeatures } = useSpecVersions();
-  return !!unstableFeatures?.[STABLE_FLAG];
+  const { unstable_features: unstableFeatures, versions } = useSpecVersions();
+  // Spec v1.19 made the endpoint official — servers advertising it may not
+  // carry the legacy feature flag at all (upstream bef2672).
+  return versions.includes('v1.19') || !!unstableFeatures?.[STABLE_FLAG];
 };
 
 export const useMutualRooms = (userId: string): AsyncState<string[], unknown> => {
@@ -42,17 +46,18 @@ export const useMutualRooms = (userId: string): AsyncState<string[], unknown> =>
         let token: string | undefined;
         do {
           const query: Record<string, string> = { user_id: userId };
-          if (token) query.batch_token = token;
+          // Spec name is `from`; older Synapse used `batch_token` — send both.
+          if (token) {
+            query.from = token;
+            query.batch_token = token;
+          }
           // eslint-disable-next-line no-await-in-loop
-          const res: { joined?: string[]; next_batch_token?: string } = await mx.http.authedRequest(
-            Method.Get,
-            '/mutual_rooms',
-            query,
-            undefined,
-            { prefix: ClientPrefix.V1 }
-          );
+          const res: { joined?: string[]; next_batch?: string; next_batch_token?: string } =
+            await mx.http.authedRequest(Method.Get, '/mutual_rooms', query, undefined, {
+              prefix: ClientPrefix.V1,
+            });
           rooms.push(...(res.joined ?? []));
-          token = res.next_batch_token;
+          token = res.next_batch ?? res.next_batch_token;
         } while (token);
         return rooms;
       }
