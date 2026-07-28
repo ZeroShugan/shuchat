@@ -10,6 +10,7 @@ export default defineConfig({
   plugins: [react(), vanillaExtractPlugin()],
   test: {
     environment: 'jsdom',
+    setupFiles: ['./vitest.setup.ts'],
     include: ['src/**/*.test.{ts,tsx}'],
     // folds/matrix-js-sdk are ESM-heavy; let vitest transform them
     server: { deps: { inline: ['folds'] } },
